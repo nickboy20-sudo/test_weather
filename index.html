@@ -1,0 +1,1668 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MeteoRO – Prognoză Meteo</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<style>
+:root {
+  --glass: rgba(255,255,255,0.1);
+  --glass-border: rgba(255,255,255,0.2);
+  --text: #e8f4fd;
+  --text-dim: rgba(232,244,253,0.65);
+  --accent: #4fc3f7;
+  --card-radius: 18px;
+  --transition: 0.35s cubic-bezier(0.4,0,0.2,1);
+  --bg-from: #0a1628;
+  --bg-to: #1a3a5c;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;color:var(--text);min-height:100vh;background:linear-gradient(135deg,var(--bg-from),var(--bg-to));overflow-x:hidden;transition:background 1.5s ease}
+body.weather-clear-day{--bg-from:#0f3460;--bg-to:#1a6b8a}
+body.weather-sunny{--bg-from:#e85d04;--bg-to:#f48c06}
+body.weather-cloudy{--bg-from:#2c3e50;--bg-to:#4a5568}
+body.weather-rain{--bg-from:#1a2332;--bg-to:#2d4059}
+body.weather-storm{--bg-from:#0d0d1a;--bg-to:#1a1a2e}
+body.weather-snow{--bg-from:#1e2f4d;--bg-to:#2e4f7a}
+body.weather-fog{--bg-from:#3a3d40;--bg-to:#565a5c}
+body.weather-night{--bg-from:#0a0e1a;--bg-to:#0d1b2a}
+body.weather-night-cloudy{--bg-from:#111827;--bg-to:#1f2937}
+
+#weather-canvas{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;opacity:0.6}
+.container{position:relative;z-index:1;max-width:1100px;margin:0 auto;padding:20px 16px}
+
+/* HEADER */
+.header{display:flex;align-items:center;gap:12px;margin-bottom:24px;flex-wrap:wrap}
+.search-wrap{flex:1;min-width:240px;position:relative}
+#search-input{width:100%;padding:12px 18px;background:var(--glass);border:1px solid var(--glass-border);border-radius:30px;color:var(--text);font-size:15px;outline:none;backdrop-filter:blur(16px);transition:var(--transition)}
+#search-input::placeholder{color:var(--text-dim)}
+#search-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,195,247,0.2)}
+#search-input::-webkit-search-cancel-button{display:none}
+.autocomplete-box{position:absolute;top:calc(100% + 6px);left:0;right:0;background:rgba(15,30,55,0.95);backdrop-filter:blur(20px);border:1px solid var(--glass-border);border-radius:14px;overflow:hidden;z-index:100;box-shadow:0 8px 32px rgba(0,0,0,0.5);display:none}
+.autocomplete-box.open{display:block}
+.ac-item{padding:11px 18px;cursor:pointer;font-size:14px;transition:background 0.2s;border-bottom:1px solid rgba(255,255,255,0.05)}
+.ac-item:last-child{border-bottom:none}
+.ac-item:hover{background:rgba(79,195,247,0.15)}
+.ac-item .country{font-size:12px;color:var(--text-dim);margin-left:6px}
+.btn-icon{background:var(--glass);border:1px solid var(--glass-border);border-radius:50%;width:46px;height:46px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text);backdrop-filter:blur(16px);transition:var(--transition);flex-shrink:0}
+.btn-icon:hover{background:rgba(79,195,247,0.2);border-color:var(--accent)}
+.btn-icon svg{width:20px;height:20px}
+
+/* HERO */
+.hero{display:flex;flex-wrap:wrap;gap:20px;margin-bottom:24px}
+.hero-main{flex:2;min-width:260px;background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--card-radius);padding:28px;backdrop-filter:blur(20px)}
+.hero-location{font-size:14px;color:var(--text-dim);margin-bottom:4px;display:flex;align-items:center;gap:6px}
+.hero-city{font-size:28px;font-weight:700;line-height:1.1;margin-bottom:2px}
+.hero-datetime{font-size:13px;color:var(--text-dim);margin-bottom:20px}
+.hero-temp-row{display:flex;align-items:flex-start;gap:16px;margin-bottom:8px}
+.hero-temp{font-size:88px;font-weight:200;line-height:1;letter-spacing:-4px}
+.hero-weather-icon{font-size:56px;margin-top:8px;filter:drop-shadow(0 4px 12px rgba(0,0,0,0.4))}
+.hero-desc{font-size:18px;color:var(--text-dim);margin-bottom:6px;text-transform:capitalize}
+.hero-feels{font-size:14px;color:var(--text-dim)}
+.hero-side{flex:1;min-width:200px;display:flex;flex-direction:column;gap:14px}
+
+/* CARDS */
+.card{background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--card-radius);padding:20px;backdrop-filter:blur(16px)}
+.card-sm{padding:14px 16px}
+.card-title{font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.card-title svg{width:14px;height:14px;opacity:0.7}
+.card-value{font-size:28px;font-weight:600;line-height:1}
+.card-sub{font-size:12px;color:var(--text-dim);margin-top:4px}
+
+/* CONDITIONS GRID */
+.conditions-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;margin-bottom:24px}
+
+/* ALERTS */
+.alerts{margin-bottom:24px;display:flex;flex-direction:column;gap:10px}
+.alert{border-radius:12px;padding:12px 16px;display:flex;align-items:center;gap:12px;font-size:14px;backdrop-filter:blur(12px)}
+.alert-danger{background:rgba(220,38,38,0.25);border:1px solid rgba(220,38,38,0.4)}
+.alert-warning{background:rgba(217,119,6,0.25);border:1px solid rgba(217,119,6,0.4)}
+.alert-info{background:rgba(79,195,247,0.15);border:1px solid rgba(79,195,247,0.3)}
+.alert-icon{font-size:20px;flex-shrink:0}
+.alert-text strong{display:block;font-size:13px}
+.alert-text span{font-size:12px;color:var(--text-dim)}
+
+/* HOURLY */
+.hourly-scroll{display:flex;gap:10px;overflow-x:auto;padding-bottom:8px;margin-bottom:24px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.2) transparent}
+.hourly-scroll::-webkit-scrollbar{height:4px}
+.hourly-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.2);border-radius:4px}
+.hour-card{flex-shrink:0;background:var(--glass);border:1px solid var(--glass-border);border-radius:14px;padding:12px 14px;text-align:center;backdrop-filter:blur(12px);min-width:72px;transition:var(--transition)}
+.hour-card.current{border-color:var(--accent);background:rgba(79,195,247,0.15)}
+.hour-card:hover{transform:translateY(-2px);border-color:var(--accent)}
+.hour-time{font-size:12px;color:var(--text-dim);margin-bottom:6px}
+.hour-icon{font-size:22px;margin-bottom:6px}
+.hour-temp{font-size:15px;font-weight:600}
+.hour-precip{font-size:11px;color:#7dd3fc;margin-top:4px}
+
+/* 10-DAY */
+.day-list{margin-bottom:24px}
+.day-row{display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--glass);border:1px solid var(--glass-border);border-radius:12px;margin-bottom:8px;cursor:pointer;backdrop-filter:blur(12px);transition:var(--transition)}
+.day-row:hover,.day-row.active{background:rgba(79,195,247,0.15);border-color:var(--accent);transform:translateX(4px)}
+.day-name{width:95px;font-size:14px;font-weight:500}
+.day-icon{font-size:24px;margin-right:4px}
+.day-precip-prob{width:50px;font-size:13px;color:#7dd3fc;text-align:center}
+.day-bars{flex:1;display:flex;align-items:center;gap:8px}
+.temp-bar-wrap{flex:1;height:6px;background:rgba(255,255,255,0.1);border-radius:3px;position:relative}
+.temp-bar-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#4fc3f7,#f48c06)}
+.temp-min{font-size:13px;color:var(--text-dim);width:36px;text-align:right}
+.temp-max{font-size:13px;font-weight:600;width:36px}
+
+/* DETAIL CHART */
+.day-detail{background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--card-radius);padding:20px;backdrop-filter:blur(16px);margin-bottom:24px;display:none}
+.day-detail.open{display:block}
+.day-detail-title{font-size:16px;font-weight:600;margin-bottom:16px}
+
+/* SUMMARY CARDS */
+.summary-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;margin-bottom:24px}
+.summary-card{background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--card-radius);padding:18px;backdrop-filter:blur(16px)}
+.summary-label{font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);margin-bottom:6px}
+.summary-value{font-size:26px;font-weight:700;margin-bottom:2px}
+.summary-day{font-size:13px;color:var(--text-dim)}
+.summary-icon{float:right;font-size:32px;margin-top:-4px}
+
+/* SKY ARC */
+.sky-card{background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--card-radius);padding:20px;backdrop-filter:blur(16px);margin-bottom:24px}
+#sky-canvas{width:100%;height:160px}
+
+/* SECTIONS */
+.section-title{font-size:14px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);margin-bottom:14px;padding-left:4px}
+
+.charts-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(480px,1fr));gap:20px;margin-bottom:24px}
+.chart-card{background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--card-radius);padding:20px;backdrop-filter:blur(16px)}
+.chart-card canvas{max-height:220px}
+
+/* RADAR */
+.radar-card{background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--card-radius);padding:20px;backdrop-filter:blur(16px);margin-bottom:24px}
+#radar-map{height:380px;border-radius:12px;overflow:hidden}
+.radar-controls{display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap}
+.radar-controls button{background:var(--glass);border:1px solid var(--glass-border);border-radius:8px;padding:8px 16px;color:var(--text);cursor:pointer;font-size:13px;transition:var(--transition)}
+.radar-controls button:hover{background:rgba(79,195,247,0.2);border-color:var(--accent)}
+.radar-controls button.active{background:rgba(79,195,247,0.25);border-color:var(--accent)}
+#radar-time{font-size:13px;color:var(--text-dim);flex:1;text-align:right}
+.radar-legend{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-dim)}
+.radar-legend-bar{width:120px;height:8px;border-radius:4px;background:linear-gradient(90deg,#00e5ff,#00ff00,#ffff00,#ff8000,#ff0000);margin:0 6px}
+
+/* MOON */
+.moon-card{background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--card-radius);padding:20px;backdrop-filter:blur(16px);display:flex;align-items:center;gap:20px}
+.moon-icon{font-size:52px;flex-shrink:0}
+.moon-info{flex:1}
+.moon-phase-name{font-size:16px;font-weight:600;margin-bottom:4px}
+.moon-phase-desc{font-size:13px;color:var(--text-dim)}
+#moon-canvas{width:80px;height:80px;flex-shrink:0}
+
+/* UV GAUGE */
+.uv-gauge{display:flex;flex-direction:column;align-items:center;gap:4px}
+.uv-gauge canvas{width:80px;height:80px}
+
+/* FOOTER */
+.footer{text-align:center;font-size:12px;color:var(--text-dim);padding:20px 0;margin-top:8px}
+
+/* LOADING */
+.loading-overlay{position:fixed;inset:0;background:rgba(10,22,40,0.92);backdrop-filter:blur(8px);z-index:500;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;transition:opacity 0.5s}
+.loading-overlay.hidden{opacity:0;pointer-events:none}
+.loader{width:48px;height:48px;border:3px solid rgba(79,195,247,0.3);border-top-color:var(--accent);border-radius:50%;animation:spin 0.9s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-text{font-size:15px;color:var(--text-dim)}
+
+/* REFRESH */
+.refresh-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:8px}
+.last-updated{font-size:12px;color:var(--text-dim)}
+.btn-refresh{background:var(--glass);border:1px solid var(--glass-border);border-radius:8px;padding:7px 14px;color:var(--text);cursor:pointer;font-size:13px;display:flex;align-items:center;gap:6px;backdrop-filter:blur(12px);transition:var(--transition)}
+.btn-refresh:hover{background:rgba(79,195,247,0.2)}
+
+/* TOAST */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:rgba(15,30,55,0.97);border:1px solid var(--glass-border);border-radius:12px;padding:12px 20px;font-size:14px;z-index:999;transition:transform 0.3s;backdrop-filter:blur(16px)}
+.toast.show{transform:translateX(-50%) translateY(0)}
+
+/* WIND COMPASS */
+.wind-compass-wrap{display:flex;align-items:center;gap:8px}
+.wind-dir-label{font-size:12px;color:var(--accent)}
+
+/* EXTRA CARDS */
+.extra-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:24px}
+.pressure-trend{font-size:18px;margin-left:4px}
+
+/* TEMP CHART RAIN OVERLAY */
+.chart-tabs{display:flex;gap:8px;margin-bottom:14px}
+.chart-tab{background:var(--glass);border:1px solid var(--glass-border);border-radius:8px;padding:6px 14px;font-size:13px;cursor:pointer;transition:var(--transition)}
+.chart-tab.active{background:rgba(79,195,247,0.2);border-color:var(--accent);color:var(--accent)}
+
+@media(max-width:600px){
+  .hero-temp{font-size:64px}
+  .hero-city{font-size:22px}
+  .charts-grid{grid-template-columns:1fr}
+}
+
+/* GALAXY S25 / A54 & similar phones (~360-430px) */
+@media(max-width:430px){
+  .container{padding:14px 10px}
+  .header{gap:8px;margin-bottom:18px}
+  #search-input{padding:11px 14px;font-size:14px}
+  .btn-icon{width:42px;height:42px}
+  .hero-main{padding:18px}
+  .hero-temp{font-size:52px;letter-spacing:-2px}
+  .hero-weather-icon{font-size:42px;margin-top:4px}
+  .hero-city{font-size:19px}
+  .hero-desc{font-size:15px}
+  .hero-side{min-width:100%}
+  .conditions-grid{grid-template-columns:repeat(2,1fr);gap:10px}
+  .extra-grid{grid-template-columns:repeat(2,1fr);gap:10px}
+  .summary-grid{grid-template-columns:1fr 1fr;gap:10px}
+  .card-value{font-size:22px}
+  .card{padding:14px}
+  .day-name{width:64px;font-size:13px}
+  .day-precip-prob{width:38px;font-size:12px}
+  .temp-min,.temp-max{width:30px;font-size:12px}
+  .day-row{padding:10px 10px;gap:8px}
+  .chart-card{padding:14px}
+  .chart-card canvas{max-height:180px}
+  .radar-card{padding:14px}
+  #radar-map{height:280px}
+  .radar-controls{gap:8px}
+  .radar-controls button{padding:7px 12px;font-size:12px}
+  #radar-time{width:100%;text-align:left;order:5}
+  .radar-legend{order:4}
+  .moon-card{padding:14px;gap:14px}
+  .moon-icon{font-size:40px}
+  .section-title{font-size:12px}
+  .summary-value{font-size:21px}
+  .rain-big{font-size:38px}
+}
+
+@media(max-width:360px){
+  .conditions-grid{grid-template-columns:1fr 1fr}
+  .day-name{width:56px;font-size:12px}
+  .hero-temp{font-size:46px}
+}
+
+/* WIND DIRECTION ARROW */
+.wind-arrow{display:inline-block;font-size:18px;transition:transform 0.5s}
+
+/* ACCUMULATED RAIN */
+.rain-big{font-size:48px;font-weight:200;letter-spacing:-2px;line-height:1}
+.rain-unit{font-size:18px;color:var(--text-dim)}
+
+/* STARS OVERLAY */
+.stars-layer{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0}
+
+/* SECTION DIVIDER */
+.sec{margin-bottom:24px}
+</style>
+</head>
+<body>
+<canvas id="weather-canvas"></canvas>
+<div class="loading-overlay" id="loading">
+  <div class="loader"></div>
+  <div class="loading-text">Se încarcă datele meteo…</div>
+</div>
+
+<div class="container">
+  <!-- HEADER -->
+  <div class="header">
+    <div class="search-wrap">
+      <input type="search" id="search-input" placeholder="🔍 Caută un oraș…" autocomplete="off" spellcheck="false">
+      <div class="autocomplete-box" id="ac-box"></div>
+    </div>
+    <button class="btn-icon" id="btn-location" title="Locația mea">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="9" stroke-dasharray="3 3" opacity="0.5"/></svg>
+    </button>
+    <button class="btn-icon" id="btn-refresh" title="Reîmprospătare">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+    </button>
+  </div>
+
+  <!-- REFRESH ROW -->
+  <div class="refresh-row">
+    <div class="last-updated" id="last-updated">—</div>
+  </div>
+
+  <!-- ALERTS -->
+  <div class="alerts" id="alerts-container"></div>
+
+  <!-- HERO -->
+  <div class="hero" id="hero-section">
+    <div class="hero-main">
+      <div class="hero-location">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+        <span id="hero-country">—</span>
+      </div>
+      <div class="hero-city" id="hero-city">București</div>
+      <div class="hero-datetime" id="hero-datetime">—</div>
+      <div class="hero-temp-row">
+        <div class="hero-temp" id="hero-temp">—</div>
+        <div class="hero-weather-icon" id="hero-icon">🌤</div>
+      </div>
+      <div class="hero-desc" id="hero-desc">Se încarcă…</div>
+      <div class="hero-feels" id="hero-feels">Senzație: —</div>
+    </div>
+    <div class="hero-side">
+      <div class="card card-sm">
+        <div class="card-title">🌅 Răsărit</div>
+        <div class="card-value" id="sunrise-time" style="font-size:22px">—</div>
+        <div class="card-sub" id="day-length">Durata zilei: —</div>
+      </div>
+      <div class="card card-sm">
+        <div class="card-title">🌇 Apus</div>
+        <div class="card-value" id="sunset-time" style="font-size:22px">—</div>
+      </div>
+      <div class="card card-sm" id="moon-mini-card">
+        <div class="card-title">🌙 Faza Lunii</div>
+        <div class="card-value" id="moon-phase-val" style="font-size:20px">—</div>
+        <div class="card-sub" id="moon-illumination">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONDITIONS GRID -->
+  <div class="conditions-grid sec">
+    <div class="card card-sm">
+      <div class="card-title">💧 Umiditate</div>
+      <div class="card-value" id="cond-humidity">—</div>
+      <div class="card-sub" id="cond-dewpoint">Punct de rouă: —</div>
+    </div>
+    <div class="card card-sm">
+      <div class="card-title">🌬 Vânt</div>
+      <div class="card-value" id="cond-wind">—</div>
+      <div class="card-sub" id="cond-winddir">Direcție: —</div>
+    </div>
+    <div class="card card-sm">
+      <div class="card-title">☀ Indice UV</div>
+      <div class="card-value" id="cond-uv">—</div>
+      <div class="card-sub" id="cond-uv-level">—</div>
+    </div>
+    <div class="card card-sm">
+      <div class="card-title">📊 Presiune</div>
+      <div class="card-value" id="cond-pressure">—</div>
+      <div class="card-sub" id="cond-pressure-trend">—</div>
+    </div>
+    <div class="card card-sm">
+      <div class="card-title">👁 Vizibilitate</div>
+      <div class="card-value" id="cond-visibility">—</div>
+    </div>
+    <div class="card card-sm">
+      <div class="card-title">☁ Acoperire Nori</div>
+      <div class="card-value" id="cond-cloud">—</div>
+      <div class="card-sub" id="cond-cloud-level">—</div>
+    </div>
+  </div>
+
+  <!-- HOURLY FORECAST -->
+  <div class="sec">
+    <div class="section-title">⏱ Prognoză Orară – 48h</div>
+    <div class="hourly-scroll" id="hourly-container"></div>
+  </div>
+
+  <!-- 10-DAY FORECAST -->
+  <div class="sec">
+    <div class="section-title">📅 Prognoză 10 Zile</div>
+    <div class="day-list" id="day-list"></div>
+    <div class="day-detail" id="day-detail">
+      <div class="day-detail-title" id="day-detail-title">—</div>
+      <div class="chart-tabs">
+        <div class="chart-tab active" onclick="setDayTab('temp')">🌡 Temperatură</div>
+        <div class="chart-tab" onclick="setDayTab('rain')">🌧 Precipitații</div>
+        <div class="chart-tab" onclick="setDayTab('wind')">🌬 Vânt</div>
+      </div>
+      <canvas id="day-detail-chart" style="max-height:200px"></canvas>
+    </div>
+  </div>
+
+  <!-- 10-DAY SUMMARY -->
+  <div class="sec">
+    <div class="section-title">📊 Rezumat 10 Zile</div>
+    <div class="summary-grid">
+      <div class="summary-card">
+        <div class="summary-label">🌡 Ziua cea mai caldă</div>
+        <div class="summary-icon">🔥</div>
+        <div class="summary-value" id="sum-hottest">—</div>
+        <div class="summary-day" id="sum-hottest-day">—</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">❄ Ziua cea mai rece</div>
+        <div class="summary-icon">🥶</div>
+        <div class="summary-value" id="sum-coldest">—</div>
+        <div class="summary-day" id="sum-coldest-day">—</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">🌧 Cea mai ploioasă</div>
+        <div class="summary-icon">💧</div>
+        <div class="summary-value" id="sum-rainiest">—</div>
+        <div class="summary-day" id="sum-rainiest-day">—</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">☔ Max. șanse de ploaie</div>
+        <div class="summary-icon">🌂</div>
+        <div class="summary-value" id="sum-precip-prob">—</div>
+        <div class="summary-day" id="sum-precip-prob-day">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SUNRISE/SUNSET SKY ARC -->
+  <div class="sky-card sec">
+    <div class="section-title">🌅 Parcurs Soare & Lună</div>
+    <canvas id="sky-canvas"></canvas>
+  </div>
+
+  <!-- RAIN ACCUMULATION -->
+  <div class="chart-card sec">
+    <div class="section-title">🌧 Precipitații Cumulate – 10 Zile</div>
+    <div style="display:flex;align-items:flex-end;gap:6px;margin-bottom:16px">
+      <span class="rain-big" id="total-rain">—</span>
+      <span class="rain-unit">mm total</span>
+    </div>
+    <canvas id="rain-chart" style="max-height:160px"></canvas>
+  </div>
+
+  <!-- CHARTS GRID -->
+  <div class="charts-grid sec">
+    <div class="chart-card">
+      <div class="section-title">🌬 Viteză Vânt – 24h (km/h)</div>
+      <canvas id="wind-chart"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="section-title">🌡 Temperaturi Max/Min – 10 Zile</div>
+      <canvas id="temp-range-chart"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="section-title">📊 Presiune Atmosferică – 24h (hPa)</div>
+      <canvas id="pressure-chart"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="section-title">💧 Umiditate & Punct de Rouă – 24h</div>
+      <canvas id="humidity-chart"></canvas>
+    </div>
+  </div>
+
+  <!-- RADAR -->
+  <div class="radar-card sec">
+    <div class="section-title">🛰 Radar Meteo – Ultima Oră</div>
+    <div id="radar-map"></div>
+    <div class="radar-controls">
+      <button id="radar-play-btn" onclick="toggleRadar()">⏸ Pauză</button>
+      <div class="radar-legend">
+        <span>0mm</span>
+        <div class="radar-legend-bar"></div>
+        <span>50mm+</span>
+      </div>
+      <div id="radar-time">—</div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    Sursa date: <a href="https://open-meteo.com/" target="_blank" style="color:var(--accent)">Open-Meteo</a> &amp;
+    <a href="https://www.dwd.de/" target="_blank" style="color:var(--accent)">DWD</a> &nbsp;|&nbsp;
+    © MeteoRO 2025
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════
+// CONSTANTS & CONFIG
+// ═══════════════════════════════════════════════════
+const DEFAULT = { lat: 44.4268, lon: 26.1025, name: 'București', country: 'RO' };
+let state = {
+  lat: DEFAULT.lat, lon: DEFAULT.lon,
+  name: DEFAULT.name, country: DEFAULT.country,
+  weather: null,
+  selectedDayIndex: null,
+  currentDayTab: 'temp',
+  radarPlaying: false,
+  radarFrameIndex: 0,
+  radarTimer: null,
+  radarLayer: 'precip'
+};
+const charts = {};
+let radarMap = null;
+
+// ═══════════════════════════════════════════════════
+// WMO WEATHER CODE MAPPING
+// ═══════════════════════════════════════════════════
+const WMO = {
+  0:  { desc: 'Cer senin',        icon: '☀',  bg: 'clear' },
+  1:  { desc: 'Predominant senin',icon: '🌤',  bg: 'clear' },
+  2:  { desc: 'Parțial noros',    icon: '⛅',  bg: 'cloudy' },
+  3:  { desc: 'Acoperit',         icon: '☁',  bg: 'cloudy' },
+  45: { desc: 'Ceață',            icon: '🌫',  bg: 'fog' },
+  48: { desc: 'Ceață cu chiciură',icon: '🌫',  bg: 'fog' },
+  51: { desc: 'Burniță ușoară',   icon: '🌦',  bg: 'rain' },
+  53: { desc: 'Burniță moderată', icon: '🌦',  bg: 'rain' },
+  55: { desc: 'Burniță densă',    icon: '🌧',  bg: 'rain' },
+  61: { desc: 'Ploaie ușoară',    icon: '🌧',  bg: 'rain' },
+  63: { desc: 'Ploaie moderată',  icon: '🌧',  bg: 'rain' },
+  65: { desc: 'Ploaie intensă',   icon: '🌧',  bg: 'rain' },
+  66: { desc: 'Ploaie înghețată', icon: '🌨',  bg: 'rain' },
+  67: { desc: 'Ploaie înghețată intensă', icon: '🌨', bg: 'rain' },
+  71: { desc: 'Ninsoare ușoară',  icon: '🌨',  bg: 'snow' },
+  73: { desc: 'Ninsoare moderată',icon: '❄',  bg: 'snow' },
+  75: { desc: 'Ninsoare abundentă',icon: '❄',  bg: 'snow' },
+  77: { desc: 'Ace de gheață',    icon: '🌨',  bg: 'snow' },
+  80: { desc: 'Averse slabe',     icon: '🌦',  bg: 'rain' },
+  81: { desc: 'Averse moderate',  icon: '🌧',  bg: 'rain' },
+  82: { desc: 'Averse violente',  icon: '⛈',  bg: 'storm' },
+  85: { desc: 'Averse de ninsoare', icon: '🌨', bg: 'snow' },
+  86: { desc: 'Averse de ninsoare intense', icon: '❄', bg: 'snow' },
+  95: { desc: 'Furtună cu descărcări', icon: '⛈', bg: 'storm' },
+  96: { desc: 'Furtună cu grindină',   icon: '⛈', bg: 'storm' },
+  99: { desc: 'Furtună cu grindină mare', icon: '⛈', bg: 'storm' },
+};
+function wmo(code) { return WMO[code] || { desc: 'Necunoscut', icon: '❓', bg: 'clear' }; }
+
+// Night versions
+const WMO_NIGHT = {
+  0: { desc: 'Cer senin', icon: '🌙', bg: 'night' },
+  1: { desc: 'Predominant senin', icon: '🌙', bg: 'night' },
+  2: { desc: 'Parțial noros', icon: '🌙', bg: 'night-cloudy' },
+  3: { desc: 'Acoperit', icon: '☁', bg: 'night-cloudy' },
+};
+function wmoIcon(code, isDay) {
+  if (!isDay && [0,1,2,3].includes(code)) return WMO_NIGHT[code];
+  return wmo(code);
+}
+
+// ═══════════════════════════════════════════════════
+// CANVAS BACKGROUND ANIMATION
+// ═══════════════════════════════════════════════════
+const bgCanvas = document.getElementById('weather-canvas');
+const bgCtx = bgCanvas.getContext('2d');
+let bgParticles = [], bgAnimFrame = null, bgType = 'clear', bgIsDay = true;
+
+function resizeBg() {
+  bgCanvas.width = window.innerWidth;
+  bgCanvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resizeBg);
+resizeBg();
+
+function initParticles(type, isDay) {
+  bgType = type; bgIsDay = isDay;
+  bgParticles = [];
+  if (type === 'rain' || type === 'storm') {
+    for (let i = 0; i < 220; i++) {
+      bgParticles.push({
+        x: Math.random() * bgCanvas.width,
+        y: Math.random() * bgCanvas.height,
+        speed: 12 + Math.random() * 14,
+        len: 18 + Math.random() * 22,
+        op: 0.3 + Math.random() * 0.5
+      });
+    }
+  } else if (type === 'snow') {
+    for (let i = 0; i < 130; i++) {
+      bgParticles.push({
+        x: Math.random() * bgCanvas.width,
+        y: Math.random() * bgCanvas.height,
+        r: 2 + Math.random() * 5,
+        speed: 1.2 + Math.random() * 2.5,
+        drift: (Math.random() - 0.5) * 0.8,
+        op: 0.4 + Math.random() * 0.5
+      });
+    }
+  } else if (!isDay || type === 'night' || type === 'night-cloudy') {
+    for (let i = 0; i < 200; i++) {
+      bgParticles.push({
+        x: Math.random() * bgCanvas.width,
+        y: Math.random() * bgCanvas.height * 0.7,
+        r: 0.8 + Math.random() * 1.8,
+        twinkle: Math.random() * Math.PI * 2,
+        speed: 0.02 + Math.random() * 0.03
+      });
+    }
+  } else if (type === 'clear' && isDay) {
+    // Birds
+    for (let i = 0; i < 6; i++) {
+      bgParticles.push({
+        type: 'bird',
+        x: Math.random() * bgCanvas.width,
+        y: 40 + Math.random() * 120,
+        speed: 0.5 + Math.random() * 1,
+        flap: Math.random() * Math.PI * 2,
+        size: 6 + Math.random() * 8
+      });
+    }
+    // Sun rays
+    bgParticles.push({ type: 'sun', angle: 0 });
+  } else if (type === 'cloudy') {
+    for (let i = 0; i < 8; i++) {
+      bgParticles.push({
+        x: Math.random() * bgCanvas.width * 1.5 - bgCanvas.width * 0.25,
+        y: 40 + Math.random() * 200,
+        speed: 0.15 + Math.random() * 0.3,
+        scale: 0.6 + Math.random() * 0.8,
+        op: 0.2 + Math.random() * 0.25
+      });
+    }
+  }
+}
+
+let lightningTimer = 0;
+function drawBg() {
+  bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
+
+  if (bgType === 'rain' || bgType === 'storm') {
+    bgParticles.forEach(p => {
+      bgCtx.save();
+      bgCtx.strokeStyle = `rgba(174,214,241,${p.op})`;
+      bgCtx.lineWidth = 1.2;
+      bgCtx.beginPath();
+      bgCtx.moveTo(p.x, p.y);
+      bgCtx.lineTo(p.x - 3, p.y + p.len);
+      bgCtx.stroke();
+      bgCtx.restore();
+      p.y += p.speed; p.x -= 1.5;
+      if (p.y > bgCanvas.height) { p.y = -p.len; p.x = Math.random() * bgCanvas.width; }
+    });
+    if (bgType === 'storm') {
+      lightningTimer++;
+      if (lightningTimer > 180 + Math.random() * 200) {
+        bgCtx.save();
+        bgCtx.strokeStyle = 'rgba(255,255,180,0.9)'; bgCtx.lineWidth = 2;
+        const lx = Math.random() * bgCanvas.width;
+        bgCtx.beginPath(); bgCtx.moveTo(lx, 0);
+        bgCtx.lineTo(lx - 15 + Math.random() * 30, bgCanvas.height * 0.5);
+        bgCtx.lineTo(lx - 30 + Math.random() * 60, bgCanvas.height * 0.8);
+        bgCtx.stroke(); bgCtx.restore();
+        lightningTimer = 0;
+      }
+    }
+  } else if (bgType === 'snow') {
+    bgParticles.forEach(p => {
+      bgCtx.save();
+      bgCtx.fillStyle = `rgba(255,255,255,${p.op})`;
+      bgCtx.beginPath(); bgCtx.arc(p.x, p.y, p.r, 0, Math.PI * 2); bgCtx.fill();
+      bgCtx.restore();
+      p.y += p.speed; p.x += p.drift;
+      if (p.y > bgCanvas.height) { p.y = -10; p.x = Math.random() * bgCanvas.width; }
+    });
+  } else if (!bgIsDay || bgType === 'night' || bgType === 'night-cloudy') {
+    bgParticles.forEach(p => {
+      p.twinkle += p.speed;
+      const op = 0.4 + 0.5 * Math.sin(p.twinkle);
+      bgCtx.save();
+      bgCtx.fillStyle = `rgba(255,255,255,${op})`;
+      bgCtx.beginPath(); bgCtx.arc(p.x, p.y, p.r, 0, Math.PI * 2); bgCtx.fill();
+      bgCtx.restore();
+    });
+    // Moon glow
+    bgCtx.save();
+    const mg = bgCtx.createRadialGradient(bgCanvas.width - 120, 80, 0, bgCanvas.width - 120, 80, 100);
+    mg.addColorStop(0, 'rgba(255,245,200,0.15)');
+    mg.addColorStop(1, 'transparent');
+    bgCtx.fillStyle = mg;
+    bgCtx.beginPath(); bgCtx.arc(bgCanvas.width - 120, 80, 100, 0, Math.PI * 2); bgCtx.fill();
+    bgCtx.restore();
+  } else if (bgType === 'clear' && bgIsDay) {
+    bgParticles.forEach(p => {
+      if (p.type === 'bird') {
+        p.x += p.speed; p.flap += 0.12;
+        if (p.x > bgCanvas.width + 50) p.x = -50;
+        const wy = Math.sin(p.x / 200) * 12;
+        bgCtx.save(); bgCtx.strokeStyle = 'rgba(255,255,255,0.4)'; bgCtx.lineWidth = 1.5;
+        const f = Math.sin(p.flap) * p.size;
+        bgCtx.beginPath(); bgCtx.moveTo(p.x, p.y + wy); bgCtx.quadraticCurveTo(p.x - p.size, p.y + wy + f, p.x - p.size * 2, p.y + wy); bgCtx.stroke();
+        bgCtx.beginPath(); bgCtx.moveTo(p.x, p.y + wy); bgCtx.quadraticCurveTo(p.x + p.size, p.y + wy + f, p.x + p.size * 2, p.y + wy); bgCtx.stroke();
+        bgCtx.restore();
+      } else if (p.type === 'sun') {
+        p.angle += 0.003;
+        const sx = 90, sy = 90;
+        bgCtx.save();
+        // Glow
+        const grd = bgCtx.createRadialGradient(sx, sy, 0, sx, sy, 130);
+        grd.addColorStop(0, 'rgba(255,220,100,0.35)'); grd.addColorStop(1, 'transparent');
+        bgCtx.fillStyle = grd; bgCtx.beginPath(); bgCtx.arc(sx, sy, 130, 0, Math.PI * 2); bgCtx.fill();
+        // Rays
+        bgCtx.strokeStyle = 'rgba(255,220,100,0.25)'; bgCtx.lineWidth = 2;
+        for (let i = 0; i < 12; i++) {
+          const a = p.angle + (i / 12) * Math.PI * 2;
+          bgCtx.beginPath(); bgCtx.moveTo(sx + Math.cos(a) * 45, sy + Math.sin(a) * 45);
+          bgCtx.lineTo(sx + Math.cos(a) * 75, sy + Math.sin(a) * 75); bgCtx.stroke();
+        }
+        bgCtx.restore();
+      }
+    });
+  } else if (bgType === 'cloudy') {
+    bgParticles.forEach(p => {
+      p.x += p.speed;
+      if (p.x > bgCanvas.width + 200) p.x = -300;
+      drawCloud(p.x, p.y, p.scale, p.op);
+    });
+  }
+  bgAnimFrame = requestAnimationFrame(drawBg);
+}
+
+function drawCloud(x, y, sc, op) {
+  bgCtx.save();
+  bgCtx.fillStyle = `rgba(255,255,255,${op})`;
+  bgCtx.beginPath();
+  bgCtx.arc(x, y, 50 * sc, 0, Math.PI * 2);
+  bgCtx.arc(x + 50 * sc, y - 15 * sc, 35 * sc, 0, Math.PI * 2);
+  bgCtx.arc(x + 90 * sc, y, 45 * sc, 0, Math.PI * 2);
+  bgCtx.arc(x + 130 * sc, y + 10 * sc, 30 * sc, 0, Math.PI * 2);
+  bgCtx.fill();
+  bgCtx.restore();
+}
+
+function setBackground(code, isDay) {
+  const info = wmoIcon(code, isDay);
+  const bg = info.bg;
+  document.body.className = `weather-${bg}${!isDay ? (bg === 'clear' ? ' weather-night' : '') : ''}`;
+  if (bgAnimFrame) cancelAnimationFrame(bgAnimFrame);
+  initParticles(bg, isDay);
+  drawBg();
+}
+
+// ═══════════════════════════════════════════════════
+// API FUNCTIONS
+// ═══════════════════════════════════════════════════
+async function fetchWeather(lat, lon) {
+  const params = new URLSearchParams({
+    latitude: lat, longitude: lon,
+    current: 'temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,wind_direction_10m,precipitation,weather_code,surface_pressure,visibility,uv_index,is_day,cloud_cover',
+    hourly: 'temperature_2m,apparent_temperature,precipitation_probability,precipitation,wind_speed_10m,wind_direction_10m,weather_code,uv_index,cloud_cover,relative_humidity_2m,dew_point_2m,surface_pressure',
+    daily: 'temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_hours,precipitation_probability_max,weather_code,sunrise,sunset,wind_speed_10m_max,wind_gusts_10m_max,uv_index_max,apparent_temperature_max,apparent_temperature_min',
+    wind_speed_unit: 'kmh',
+    timezone: 'auto',
+    forecast_days: 10,
+    hourly_end: getHourlyEnd(lon)
+  });
+  const r = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`);
+  if (!r.ok) throw new Error('API error');
+  return r.json();
+}
+
+function getHourlyEnd(lon) {
+  const d = new Date(); d.setDate(d.getDate() + 2);
+  return d.toISOString().slice(0,10);
+}
+
+async function geocode(q) {
+  const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=6&language=ro&format=json`);
+  const d = await r.json();
+  return d.results || [];
+}
+
+async function reverseGeocode(lat, lon) {
+  const r = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=ro`);
+  const d = await r.json();
+  return d.address?.city || d.address?.town || d.address?.village || d.address?.county || 'Locația mea';
+}
+
+// ═══════════════════════════════════════════════════
+// MAIN LOAD FUNCTION
+// ═══════════════════════════════════════════════════
+async function loadWeather(lat, lon, name, country) {
+  showLoading();
+  try {
+    state.lat = lat; state.lon = lon; state.name = name; state.country = country;
+    const data = await fetchWeather(lat, lon);
+    state.weather = data;
+    renderAll(data);
+    document.getElementById('last-updated').textContent = 'Actualizat: ' + new Date().toLocaleTimeString('ro-RO', {hour:'2-digit',minute:'2-digit'});
+  } catch (e) {
+    showToast('Eroare la încărcarea datelor: ' + e.message, 4000);
+  } finally {
+    hideLoading();
+  }
+}
+
+function renderAll(data) {
+  const c = data.current;
+  const isDay = c.is_day;
+  const wInfo = wmoIcon(c.weather_code, isDay);
+
+  setBackground(c.weather_code, isDay === 1);
+  renderHero(c, data.daily, wInfo);
+  renderConditions(c);
+  renderAlerts(c, data.daily);
+  renderHourly(data.hourly, isDay);
+  renderDayList(data.daily);
+  renderSummary(data.daily);
+  drawSkyArc(data.daily.sunrise[0], data.daily.sunset[0]);
+  renderRainAccum(data.daily);
+  renderWindChart(data.hourly);
+  renderTempRangeChart(data.daily);
+  renderPressureChart(data.hourly);
+  renderHumidityChart(data.hourly);
+  renderMoonInfo(data.daily.sunrise[0]);
+  initRadar();
+}
+
+// ═══════════════════════════════════════════════════
+// HERO
+// ═══════════════════════════════════════════════════
+function renderHero(c, daily, wInfo) {
+  document.getElementById('hero-city').textContent = state.name;
+  document.getElementById('hero-country').textContent = state.country || '';
+  document.getElementById('hero-datetime').textContent = new Date().toLocaleDateString('ro-RO', { weekday:'long', year:'numeric', month:'long', day:'numeric', hour:'2-digit', minute:'2-digit' });
+  document.getElementById('hero-temp').textContent = Math.round(c.temperature_2m) + '°';
+  document.getElementById('hero-icon').textContent = wInfo.icon;
+  document.getElementById('hero-desc').textContent = wInfo.desc;
+  document.getElementById('hero-feels').textContent = `Senzație: ${Math.round(c.apparent_temperature)}° · Umiditate: ${c.relative_humidity_2m}%`;
+
+  const sr = parseTime(daily.sunrise[0]);
+  const ss = parseTime(daily.sunset[0]);
+  document.getElementById('sunrise-time').textContent = sr;
+  document.getElementById('sunset-time').textContent = ss;
+
+  const [srH,srM] = sr.split(':').map(Number);
+  const [ssH,ssM] = ss.split(':').map(Number);
+  const mins = (ssH*60+ssM) - (srH*60+srM);
+  document.getElementById('day-length').textContent = `Durata zilei: ${Math.floor(mins/60)}h ${mins%60}m`;
+}
+
+function parseTime(iso) {
+  const d = new Date(iso);
+  return d.toLocaleTimeString('ro-RO', { hour:'2-digit', minute:'2-digit' });
+}
+
+// ═══════════════════════════════════════════════════
+// CONDITIONS
+// ═══════════════════════════════════════════════════
+function renderConditions(c) {
+  document.getElementById('cond-humidity').textContent = c.relative_humidity_2m + '%';
+  document.getElementById('cond-dewpoint').textContent = 'Punct de rouă: ' + Math.round(calcDewPoint(c.temperature_2m, c.relative_humidity_2m)) + '°C';
+  document.getElementById('cond-wind').textContent = Math.round(c.wind_speed_10m) + ' km/h';
+  document.getElementById('cond-winddir').textContent = 'Direcție: ' + windDirLabel(c.wind_direction_10m) + ` (${c.wind_direction_10m}°)`;
+  const uv = c.uv_index;
+  document.getElementById('cond-uv').textContent = uv;
+  document.getElementById('cond-uv-level').textContent = uvLevel(uv);
+  document.getElementById('cond-pressure').textContent = Math.round(c.surface_pressure) + ' hPa';
+  document.getElementById('cond-pressure-trend').textContent = pressureStatus(c.surface_pressure);
+  const vis = c.visibility;
+  document.getElementById('cond-visibility').textContent = vis >= 1000 ? (vis/1000).toFixed(1) + ' km' : vis + ' m';
+  const cc = c.cloud_cover;
+  document.getElementById('cond-cloud').textContent = cc + '%';
+  document.getElementById('cond-cloud-level').textContent = cloudLevel(cc);
+}
+
+function calcDewPoint(T, RH) {
+  const a = 17.27, b = 237.7;
+  const alpha = ((a * T) / (b + T)) + Math.log(RH / 100);
+  return (b * alpha) / (a - alpha);
+}
+
+function windDirLabel(deg) {
+  const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSV','SV','VSV','V','VNV','NV','NNV'];
+  return dirs[Math.round(deg / 22.5) % 16];
+}
+
+function uvLevel(uv) {
+  if (uv <= 2) return '🟢 Scăzut';
+  if (uv <= 5) return '🟡 Moderat';
+  if (uv <= 7) return '🟠 Ridicat';
+  if (uv <= 10) return '🔴 Foarte ridicat';
+  return '🟣 Extrem';
+}
+
+function pressureStatus(p) {
+  if (p > 1020) return '📈 Timp stabil';
+  if (p > 1000) return '➡ Normal';
+  return '📉 Timp instabil';
+}
+
+function cloudLevel(cc) {
+  if (cc <= 12) return 'Cer senin';
+  if (cc <= 37) return 'Puțin noros';
+  if (cc <= 62) return 'Parțial noros';
+  if (cc <= 87) return 'Mult noros';
+  return 'Cer acoperit';
+}
+
+// ═══════════════════════════════════════════════════
+// ALERTS
+// ═══════════════════════════════════════════════════
+function renderAlerts(current, daily) {
+  const container = document.getElementById('alerts-container');
+  container.innerHTML = '';
+  const alerts = generateAlerts(current, daily);
+  if (alerts.length === 0) return;
+  alerts.forEach(a => {
+    const div = document.createElement('div');
+    div.className = `alert alert-${a.level}`;
+    div.innerHTML = `<div class="alert-icon">${a.icon}</div><div class="alert-text"><strong>${a.title}</strong><span>${a.desc}</span></div>`;
+    container.appendChild(div);
+  });
+}
+
+function generateAlerts(current, daily) {
+  const alerts = [];
+  const tempMax = Math.max(...daily.temperature_2m_max);
+  const tempMin = Math.min(...daily.temperature_2m_min);
+  const windMax = Math.max(...daily.wind_speed_10m_max);
+  const maxRain = Math.max(...daily.precipitation_sum);
+  const maxUV = Math.max(...daily.uv_index_max);
+
+  if (tempMax >= 38) alerts.push({ level:'danger', icon:'🌡', title:'Caniculă extremă', desc:`Temperaturi până la ${Math.round(tempMax)}°C în următoarele zile. Evitați expunerea prelungită la soare.` });
+  else if (tempMax >= 33) alerts.push({ level:'warning', icon:'🔆', title:'Căldură intensă', desc:`Până la ${Math.round(tempMax)}°C. Hidratare corespunzătoare recomandată.` });
+  
+  if (tempMin <= -15) alerts.push({ level:'danger', icon:'🥶', title:'Ger extrem', desc:`Temperaturi până la ${Math.round(tempMin)}°C. Protejați-vă împotriva degerăturilor.` });
+  else if (tempMin <= -5) alerts.push({ level:'warning', icon:'❄', title:'Ger', desc:`Temperaturi minime ${Math.round(tempMin)}°C. Purtați îmbrăcăminte caldă.` });
+  
+  if (windMax >= 90) alerts.push({ level:'danger', icon:'🌪', title:'Vânturi periculoase', desc:`Rafale până la ${Math.round(windMax)} km/h. Risc de doborâre de copaci și acoperișuri.` });
+  else if (windMax >= 60) alerts.push({ level:'warning', icon:'💨', title:'Vânt puternic', desc:`Vânturi de până la ${Math.round(windMax)} km/h. Aveți grijă la conducere.` });
+  
+  if (maxRain >= 30) alerts.push({ level:'danger', icon:'🌊', title:'Precipitații torențiale', desc:`Până la ${maxRain.toFixed(1)} mm de precipitații. Risc de inundații.` });
+  else if (maxRain >= 15) alerts.push({ level:'warning', icon:'🌧', title:'Ploaie abundentă', desc:`Precipitații de până la ${maxRain.toFixed(1)} mm. Drumuri alunecoase.` });
+  
+  if (maxUV >= 11) alerts.push({ level:'danger', icon:'☀', title:'Radiații UV extreme', desc:`Indice UV maxim: ${maxUV}. Protecție solară obligatorie.` });
+  else if (maxUV >= 8) alerts.push({ level:'warning', icon:'🌞', title:'UV foarte ridicat', desc:`Indice UV: ${maxUV}. Limitați expunerea între 11-16.` });
+
+  if (daily.weather_code.some(c => [95,96,99].includes(c))) {
+    alerts.push({ level:'warning', icon:'⛈', title:'Furtuni cu descărcări electrice', desc:'Posibile furtuni în perioada prognozată. Evitați spațiile deschise.' });
+  }
+  if (daily.weather_code.some(c => [71,73,75,85,86].includes(c))) {
+    alerts.push({ level:'info', icon:'❄', title:'Ninsoare prognozată', desc:'Condiții de iarnă așteptate. Anvelope de iarnă recomandate.' });
+  }
+  if (current.visibility < 1000) {
+    alerts.push({ level:'warning', icon:'🌫', title:'Vizibilitate redusă', desc:`Ceață cu vizibilitate de ${current.visibility}m. Conduceți cu prudență.` });
+  }
+  return alerts;
+}
+
+// ═══════════════════════════════════════════════════
+// HOURLY FORECAST
+// ═══════════════════════════════════════════════════
+function renderHourly(hourly, isDay) {
+  const container = document.getElementById('hourly-container');
+  container.innerHTML = '';
+  const now = new Date();
+  const nowH = now.getHours();
+  
+  for (let i = 0; i < Math.min(48, hourly.time.length); i++) {
+    const t = new Date(hourly.time[i]);
+    const h = t.getHours();
+    const isCurrent = (t.toDateString() === now.toDateString() && h === nowH);
+    const dayCheck = t.getHours() >= 6 && t.getHours() < 20;
+    const wi = wmoIcon(hourly.weather_code[i], dayCheck);
+    
+    const card = document.createElement('div');
+    card.className = 'hour-card' + (isCurrent ? ' current' : '');
+    card.innerHTML = `
+      <div class="hour-time">${isCurrent ? 'Acum' : (h < 10 ? '0' + h : h) + ':00'}</div>
+      <div class="hour-icon">${wi.icon}</div>
+      <div class="hour-temp">${Math.round(hourly.temperature_2m[i])}°</div>
+      <div class="hour-precip">${hourly.precipitation_probability[i]}% · ${hourly.precipitation[i].toFixed(1)}mm</div>
+    `;
+    container.appendChild(card);
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// 10-DAY LIST
+// ═══════════════════════════════════════════════════
+function renderDayList(daily) {
+  const container = document.getElementById('day-list');
+  container.innerHTML = '';
+  
+  const allMaxes = daily.temperature_2m_max;
+  const allMins = daily.temperature_2m_min;
+  const absMin = Math.min(...allMins);
+  const absMax = Math.max(...allMaxes);
+
+  daily.time.forEach((dateStr, i) => {
+    const d = new Date(dateStr + 'T12:00:00');
+    const dayName = i === 0 ? 'Azi' : i === 1 ? 'Mâine' : d.toLocaleDateString('ro-RO', { weekday: 'long' });
+    const dateLabel = d.toLocaleDateString('ro-RO', { day:'numeric', month:'short' });
+    const wi = wmo(daily.weather_code[i]);
+
+    const barMin = ((allMins[i] - absMin) / (absMax - absMin)) * 100;
+    const barMax = ((allMaxes[i] - absMin) / (absMax - absMin)) * 100;
+    const barWidth = barMax - barMin;
+
+    const row = document.createElement('div');
+    row.className = 'day-row';
+    row.dataset.index = i;
+    row.innerHTML = `
+      <div class="day-name">${dayName}<br><small style="color:var(--text-dim);font-size:11px">${dateLabel}</small></div>
+      <div class="day-icon">${wi.icon}</div>
+      <div class="day-precip-prob" style="color:${daily.precipitation_sum[i]>1?'#7dd3fc':'var(--text-dim)'}">
+        💧${daily.precipitation_probability_max[i]}%
+      </div>
+      <div class="temp-min">${Math.round(allMins[i])}°</div>
+      <div class="day-bars">
+        <div class="temp-bar-wrap">
+          <div class="temp-bar-fill" style="position:absolute;left:${barMin}%;width:${barWidth}%;height:100%"></div>
+        </div>
+      </div>
+      <div class="temp-max">${Math.round(allMaxes[i])}°</div>
+    `;
+    row.addEventListener('click', () => toggleDayDetail(i, daily));
+    container.appendChild(row);
+  });
+}
+
+function toggleDayDetail(idx, daily) {
+  const detail = document.getElementById('day-detail');
+  const rows = document.querySelectorAll('.day-row');
+  
+  if (state.selectedDayIndex === idx) {
+    state.selectedDayIndex = null;
+    detail.classList.remove('open');
+    rows.forEach(r => r.classList.remove('active'));
+    return;
+  }
+  state.selectedDayIndex = idx;
+  rows.forEach(r => r.classList.remove('active'));
+  rows[idx]?.classList.add('active');
+  
+  detail.classList.add('open');
+  const d = new Date(daily.time[idx] + 'T12:00:00');
+  document.getElementById('day-detail-title').textContent = `Detalii: ${d.toLocaleDateString('ro-RO', { weekday:'long', day:'numeric', month:'long' })}`;
+  
+  // Scroll to detail
+  setTimeout(() => detail.scrollIntoView({ behavior:'smooth', block:'nearest' }), 100);
+  
+  // Get hourly data for this day
+  const hourlyData = getDayHourly(idx);
+  drawDayDetailChart(hourlyData, state.currentDayTab);
+}
+
+function getDayHourly(dayIdx) {
+  if (!state.weather) return null;
+  const h = state.weather.hourly;
+  const dayStr = state.weather.daily.time[dayIdx];
+  const indices = h.time.map((t,i) => t.startsWith(dayStr) ? i : -1).filter(i => i >= 0);
+  return {
+    times: indices.map(i => new Date(h.time[i]).getHours()),
+    temps: indices.map(i => h.temperature_2m[i]),
+    precip: indices.map(i => h.precipitation[i]),
+    wind: indices.map(i => h.wind_speed_10m[i]),
+    precipProb: indices.map(i => h.precipitation_probability[i])
+  };
+}
+
+function setDayTab(tab) {
+  state.currentDayTab = tab;
+  document.querySelectorAll('.chart-tab').forEach((el, i) => {
+    el.classList.toggle('active', ['temp','rain','wind'][i] === tab);
+  });
+  if (state.selectedDayIndex !== null && state.weather) {
+    const hourlyData = getDayHourly(state.selectedDayIndex);
+    drawDayDetailChart(hourlyData, tab);
+  }
+}
+
+function drawDayDetailChart(data, tab) {
+  if (!data || data.times.length === 0) return;
+  if (charts.dayDetail) { charts.dayDetail.destroy(); }
+  
+  const ctx = document.getElementById('day-detail-chart').getContext('2d');
+  const labels = data.times.map(h => `${h < 10 ? '0' + h : h}:00`);
+  
+  let datasets;
+  if (tab === 'temp') {
+    datasets = [{
+      label: 'Temperatură (°C)',
+      data: data.temps,
+      borderColor: '#f48c06',
+      backgroundColor: 'rgba(244,140,6,0.15)',
+      fill: true, tension: 0.4, yAxisID: 'y'
+    }, {
+      label: 'Șanse ploaie (%)',
+      data: data.precipProb,
+      borderColor: '#4fc3f7',
+      backgroundColor: 'transparent',
+      borderDash: [4,4], tension: 0.3, yAxisID: 'y1'
+    }];
+  } else if (tab === 'rain') {
+    datasets = [{
+      label: 'Precipitații (mm)',
+      data: data.precip,
+      backgroundColor: 'rgba(79,195,247,0.5)',
+      borderColor: '#4fc3f7',
+      borderWidth: 1, type: 'bar'
+    }];
+  } else {
+    datasets = [{
+      label: 'Vânt (km/h)',
+      data: data.wind,
+      borderColor: '#a8edea',
+      backgroundColor: 'rgba(168,237,234,0.15)',
+      fill: true, tension: 0.4
+    }];
+  }
+  
+  charts.dayDetail = new Chart(ctx, {
+    type: tab === 'rain' ? 'bar' : 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      scales: {
+        x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#aaa', maxTicksLimit: 8 } },
+        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#aaa' } },
+        ...(tab === 'temp' ? { y1: { position:'right', grid:{ drawOnChartArea:false }, ticks:{ color:'#4fc3f7', callback: v => v + '%' } } } : {})
+      },
+      plugins: { legend: { labels: { color:'#ccc' } } }
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════
+// 10-DAY SUMMARY
+// ═══════════════════════════════════════════════════
+function renderSummary(daily) {
+  const days = daily.time.map((t, i) => {
+    const d = new Date(t + 'T12:00:00');
+    return {
+      name: i === 0 ? 'Azi' : i === 1 ? 'Mâine' : d.toLocaleDateString('ro-RO', { weekday:'long', day:'numeric', month:'short' }),
+      tmax: daily.temperature_2m_max[i],
+      tmin: daily.temperature_2m_min[i],
+      rain: daily.precipitation_sum[i],
+      precipProb: daily.precipitation_probability_max[i]
+    };
+  });
+
+  const hottest = days.reduce((a, b) => a.tmax > b.tmax ? a : b);
+  const coldest = days.reduce((a, b) => a.tmin < b.tmin ? a : b);
+  const rainiest = days.reduce((a, b) => a.rain > b.rain ? a : b);
+  const mostProb = days.reduce((a, b) => a.precipProb > b.precipProb ? a : b);
+
+  document.getElementById('sum-hottest').textContent = `${Math.round(hottest.tmax)}°C`;
+  document.getElementById('sum-hottest-day').textContent = hottest.name;
+  document.getElementById('sum-coldest').textContent = `${Math.round(coldest.tmin)}°C`;
+  document.getElementById('sum-coldest-day').textContent = coldest.name;
+  document.getElementById('sum-rainiest').textContent = `${rainiest.rain.toFixed(1)} mm`;
+  document.getElementById('sum-rainiest-day').textContent = rainiest.name;
+  document.getElementById('sum-precip-prob').textContent = `${mostProb.precipProb}%`;
+  document.getElementById('sum-precip-prob-day').textContent = mostProb.name;
+}
+
+// ═══════════════════════════════════════════════════
+// SKY ARC CANVAS
+// ═══════════════════════════════════════════════════
+function drawSkyArc(sunriseISO, sunsetISO) {
+  const canvas = document.getElementById('sky-canvas');
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.offsetWidth || 600;
+  const H = 160;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  
+  ctx.clearRect(0, 0, W, H);
+  
+  const now = new Date();
+  const sr = new Date(sunriseISO);
+  const ss = new Date(sunsetISO);
+  
+  // Draw gradient sky
+  const skyGrad = ctx.createLinearGradient(0, 0, 0, H);
+  skyGrad.addColorStop(0, 'rgba(135,206,235,0.2)');
+  skyGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = skyGrad;
+  ctx.fillRect(0, 0, W, H);
+  
+  // Horizon line
+  ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath(); ctx.moveTo(0, H - 30); ctx.lineTo(W, H - 30); ctx.stroke();
+  ctx.setLineDash([]);
+  
+  // Sunrise label
+  ctx.fillStyle = 'rgba(255,180,80,0.9)'; ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText(sr.toLocaleTimeString('ro-RO', {hour:'2-digit',minute:'2-digit'}), 48, H - 10);
+  ctx.fillText(ss.toLocaleTimeString('ro-RO', {hour:'2-digit',minute:'2-digit'}), W - 48, H - 10);
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.fillText('Răsărit', 48, H - 24);
+  ctx.fillText('Apus', W - 48, H - 24);
+  
+  // Arc path (sun path)
+  const arcStartX = 48, arcEndX = W - 48;
+  const arcPeakY = 18;
+  const arcBaseY = H - 30;
+  const cx = W / 2, cy = arcBaseY;
+  const rx = (arcEndX - arcStartX) / 2, ry = arcBaseY - arcPeakY;
+  
+  ctx.strokeStyle = 'rgba(255,200,80,0.35)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, rx, ry, 0, Math.PI, 0);
+  ctx.stroke();
+  
+  // Sun or moon position
+  const totalDuration = ss - sr;
+  const elapsed = now - sr;
+  let progress = Math.max(0, Math.min(1, elapsed / totalDuration));
+  const isAboveHorizon = now >= sr && now <= ss;
+  
+  if (!isAboveHorizon) progress = now < sr ? 0 : 1;
+  
+  const angle = Math.PI - progress * Math.PI; // from left (PI) to right (0)
+  const sunX = cx + rx * Math.cos(angle);
+  const sunY = cy - ry * Math.abs(Math.sin(angle));
+  
+  // Glow
+  const glow = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, 22);
+  glow.addColorStop(0, isAboveHorizon ? 'rgba(255,220,80,0.6)' : 'rgba(220,220,255,0.4)');
+  glow.addColorStop(1, 'transparent');
+  ctx.fillStyle = glow;
+  ctx.beginPath(); ctx.arc(sunX, sunY, 22, 0, Math.PI * 2); ctx.fill();
+  
+  // Sun body
+  ctx.fillStyle = isAboveHorizon ? '#FFD700' : '#E8E8FF';
+  ctx.beginPath(); ctx.arc(sunX, sunY, 10, 0, Math.PI * 2); ctx.fill();
+  
+  // Sun rays if above horizon
+  if (isAboveHorizon) {
+    ctx.strokeStyle = 'rgba(255,215,0,0.7)'; ctx.lineWidth = 1.5;
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(sunX + Math.cos(a) * 13, sunY + Math.sin(a) * 13);
+      ctx.lineTo(sunX + Math.cos(a) * 19, sunY + Math.sin(a) * 19);
+      ctx.stroke();
+    }
+  }
+  
+  // Time label under sun
+  if (isAboveHorizon) {
+    ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.font = '11px sans-serif';
+    ctx.fillText(now.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'}), sunX, sunY + 26);
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// RAIN ACCUMULATION
+// ═══════════════════════════════════════════════════
+function renderRainAccum(daily) {
+  const total = daily.precipitation_sum.reduce((a, b) => a + b, 0);
+  document.getElementById('total-rain').textContent = total.toFixed(1);
+  
+  if (charts.rain) charts.rain.destroy();
+  const ctx = document.getElementById('rain-chart').getContext('2d');
+  const labels = daily.time.map((t, i) => {
+    if (i === 0) return 'Azi';
+    const d = new Date(t + 'T12:00:00');
+    return d.toLocaleDateString('ro-RO', { weekday:'short', day:'numeric' });
+  });
+  
+  charts.rain = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Precipitații (mm)',
+        data: daily.precipitation_sum,
+        backgroundColor: daily.precipitation_sum.map(v =>
+          v > 20 ? 'rgba(59,130,246,0.8)' : v > 10 ? 'rgba(96,165,250,0.7)' : v > 5 ? 'rgba(147,197,253,0.6)' : 'rgba(186,230,253,0.5)'
+        ),
+        borderColor: 'rgba(79,195,247,0.6)',
+        borderWidth: 1, borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      scales: {
+        x: { grid:{ color:'rgba(255,255,255,0.05)' }, ticks:{ color:'#aaa', font:{size:11} } },
+        y: { grid:{ color:'rgba(255,255,255,0.05)' }, ticks:{ color:'#aaa', callback: v => v + 'mm' } }
+      },
+      plugins: { legend:{ display:false } }
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════
+// WIND CHART
+// ═══════════════════════════════════════════════════
+function renderWindChart(hourly) {
+  if (charts.wind) charts.wind.destroy();
+  const ctx = document.getElementById('wind-chart').getContext('2d');
+  const slice = 24;
+  const labels = hourly.time.slice(0, slice).map(t => {
+    const d = new Date(t); return (d.getHours() < 10 ? '0' : '') + d.getHours() + ':00';
+  });
+  
+  charts.wind = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Viteză vânt (km/h)',
+        data: hourly.wind_speed_10m.slice(0, slice),
+        borderColor: '#a8edea',
+        backgroundColor: 'rgba(168,237,234,0.12)',
+        fill: true, tension: 0.5, borderWidth: 2,
+        pointRadius: 0, pointHoverRadius: 4
+      }]
+    },
+    options: chartOptions('km/h')
+  });
+}
+
+// ═══════════════════════════════════════════════════
+// TEMP RANGE CHART
+// ═══════════════════════════════════════════════════
+function renderTempRangeChart(daily) {
+  if (charts.tempRange) charts.tempRange.destroy();
+  const ctx = document.getElementById('temp-range-chart').getContext('2d');
+  const labels = daily.time.map((t, i) => {
+    if (i === 0) return 'Azi';
+    const d = new Date(t + 'T12:00:00');
+    return d.toLocaleDateString('ro-RO', { weekday:'short' });
+  });
+  
+  charts.tempRange = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Temp Max (°C)',
+          data: daily.temperature_2m_max,
+          borderColor: '#f48c06',
+          backgroundColor: 'rgba(244,140,6,0.12)',
+          fill: '+1', tension: 0.4, borderWidth: 2, pointRadius: 3
+        },
+        {
+          label: 'Temp Min (°C)',
+          data: daily.temperature_2m_min,
+          borderColor: '#4fc3f7',
+          backgroundColor: 'rgba(79,195,247,0.12)',
+          fill: false, tension: 0.4, borderWidth: 2, pointRadius: 3
+        }
+      ]
+    },
+    options: chartOptions('°C')
+  });
+}
+
+// ═══════════════════════════════════════════════════
+// PRESSURE CHART
+// ═══════════════════════════════════════════════════
+function renderPressureChart(hourly) {
+  if (charts.pressure) charts.pressure.destroy();
+  const ctx = document.getElementById('pressure-chart').getContext('2d');
+  const slice = 24;
+  const labels = hourly.time.slice(0, slice).map(t => {
+    const d = new Date(t); return (d.getHours() < 10 ? '0' : '') + d.getHours() + ':00';
+  });
+  
+  charts.pressure = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Presiune (hPa)',
+        data: hourly.surface_pressure.slice(0, slice),
+        borderColor: '#c084fc',
+        backgroundColor: 'rgba(192,132,252,0.1)',
+        fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0
+      }]
+    },
+    options: chartOptions('hPa')
+  });
+}
+
+// ═══════════════════════════════════════════════════
+// HUMIDITY CHART
+// ═══════════════════════════════════════════════════
+function renderHumidityChart(hourly) {
+  if (charts.humidity) charts.humidity.destroy();
+  const ctx = document.getElementById('humidity-chart').getContext('2d');
+  const slice = 24;
+  const labels = hourly.time.slice(0, slice).map(t => {
+    const d = new Date(t); return (d.getHours() < 10 ? '0' : '') + d.getHours() + ':00';
+  });
+  
+  charts.humidity = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Umiditate (%)',
+          data: hourly.relative_humidity_2m.slice(0, slice),
+          borderColor: '#34d399',
+          backgroundColor: 'rgba(52,211,153,0.1)',
+          fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, yAxisID: 'y'
+        },
+        {
+          label: 'Pt. Rouă (°C)',
+          data: hourly.dew_point_2m.slice(0, slice),
+          borderColor: '#a78bfa',
+          borderDash: [4, 3],
+          backgroundColor: 'transparent',
+          fill: false, tension: 0.4, borderWidth: 1.5, pointRadius: 0, yAxisID: 'y1'
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      scales: {
+        x: { grid:{ color:'rgba(255,255,255,0.05)' }, ticks:{ color:'#aaa', maxTicksLimit: 8 } },
+        y: { grid:{ color:'rgba(255,255,255,0.05)' }, ticks:{ color:'#aaa', callback: v => v + '%' }, min: 0, max: 100 },
+        y1: { position:'right', grid:{ drawOnChartArea:false }, ticks:{ color:'#a78bfa', callback: v => v + '°' } }
+      },
+      plugins: { legend:{ labels:{ color:'#ccc', boxWidth:12 } } }
+    }
+  });
+}
+
+function chartOptions(unit) {
+  return {
+    responsive: true, maintainAspectRatio: true,
+    scales: {
+      x: { grid:{ color:'rgba(255,255,255,0.05)' }, ticks:{ color:'#aaa', maxTicksLimit: 8 } },
+      y: { grid:{ color:'rgba(255,255,255,0.05)' }, ticks:{ color:'#aaa', callback: v => v + (unit === 'km/h' || unit === 'hPa' ? unit : unit) } }
+    },
+    plugins: { legend:{ labels:{ color:'#ccc', boxWidth:12 } } }
+  };
+}
+
+// ═══════════════════════════════════════════════════
+// MOON PHASE
+// ═══════════════════════════════════════════════════
+function getMoonPhase(dateStr) {
+  const date = new Date(dateStr);
+  let year = date.getFullYear(), month = date.getMonth() + 1, day = date.getDate();
+  if (month < 3) { year--; month += 12; }
+  const A = Math.floor(year / 100);
+  const B = 2 - A + Math.floor(A / 4);
+  const JD = Math.floor(365.25 * (year + 4716)) + Math.floor(30.6001 * (month + 1)) + day + B - 1524.5;
+  const daysSinceNew = JD - 2451549.5;
+  const newMoons = daysSinceNew / 29.53058853;
+  return ((newMoons % 1) + 1) % 1;
+}
+
+function moonPhaseName(phase) {
+  if (phase < 0.03 || phase > 0.97) return { name: 'Lună nouă', icon: '🌑', illumination: 0 };
+  if (phase < 0.22) return { name: 'Semilună în creștere', icon: '🌒', illumination: phase * 2 };
+  if (phase < 0.28) return { name: 'Primul pătrar', icon: '🌓', illumination: 0.5 };
+  if (phase < 0.47) return { name: 'Lună în creștere convexă', icon: '🌔', illumination: phase };
+  if (phase < 0.53) return { name: 'Lună plină', icon: '🌕', illumination: 1 };
+  if (phase < 0.72) return { name: 'Lună în descreștere convexă', icon: '🌖', illumination: 1 - phase };
+  if (phase < 0.78) return { name: 'Ultimul pătrar', icon: '🌗', illumination: 0.5 };
+  return { name: 'Semilună în descreștere', icon: '🌘', illumination: (1 - phase) * 2 };
+}
+
+function renderMoonInfo(sunriseISO) {
+  const phase = getMoonPhase(sunriseISO);
+  const info = moonPhaseName(phase);
+  document.getElementById('moon-phase-val').textContent = info.icon + ' ' + info.name;
+  document.getElementById('moon-illumination').textContent = `Iluminare: ${Math.round(info.illumination * 100)}%`;
+}
+
+// ═══════════════════════════════════════════════════
+// RADAR (Leaflet + RainViewer live radar tiles)
+// Notă: embed-ul oficial Windy nu suportă autoplay din cauza
+// restricțiilor cross-origin ale iframe-ului (confirmat de Windy).
+// RainViewer oferă aceleași date radar meteo, cu autoplay real.
+// ═══════════════════════════════════════════════════
+let radarFrames = [];   // [{time, path}]
+let radarLayerObj = null;
+let radarCityMarker = null;
+let radarFramesLoaded = false;
+
+function initRadar() {
+  if (radarMap) {
+    radarMap.setView([state.lat, state.lon], 7);
+    if (radarCityMarker) {
+      radarCityMarker.setLatLng([state.lat, state.lon]).bindPopup(state.name);
+    }
+    return;
+  }
+
+  radarMap = L.map('radar-map', { zoomControl: true, attributionControl: true })
+    .setView([state.lat, state.lon], 7);
+
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© OpenStreetMap, © CartoDB',
+    maxZoom: 12
+  }).addTo(radarMap);
+
+  radarCityMarker = L.circleMarker([state.lat, state.lon], {
+    radius: 6, color: '#fff', fillColor: '#4fc3f7', fillOpacity: 1, weight: 2
+  }).bindPopup(state.name).addTo(radarMap);
+
+  loadRadarFrames();
+}
+
+async function loadRadarFrames() {
+  try {
+    const res = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+    const data = await res.json();
+    const past = (data.radar?.past || []).slice(-7);   // ~ultima oră (frame la ~10 min)
+    const nowcast = (data.radar?.nowcast || []).slice(0, 2); // câteva cadre de prognoză scurtă
+    radarFrames = [...past, ...nowcast].map(f => ({
+      time: f.time,
+      path: f.path,
+      host: data.host
+    }));
+    if (!radarFrames.length) throw new Error('Fără cadre radar');
+    state.radarFrameIndex = past.length - 1; // pornește pe cel mai recent cadru real
+    radarFramesLoaded = true;
+    showRadarFrame(state.radarFrameIndex);
+    startRadar();
+  } catch (e) {
+    document.getElementById('radar-time').textContent = 'Radar indisponibil momentan';
+  }
+}
+
+function showRadarFrame(idx) {
+  const frame = radarFrames[idx];
+  if (!frame) return;
+  const url = `${frame.host}${frame.path}/256/{z}/{x}/{y}/2/1_1.png`;
+  const newLayer = L.tileLayer(url, {
+    opacity: 0.75,
+    zIndex: 5,
+    attribution: '© RainViewer'
+  });
+  newLayer.addTo(radarMap);
+  if (radarLayerObj) {
+    const old = radarLayerObj;
+    // scoate stratul vechi după ce se încarcă noul, pentru tranziție lină
+    newLayer.once('load', () => radarMap.removeLayer(old));
+    setTimeout(() => { if (radarMap.hasLayer(old)) radarMap.removeLayer(old); }, 700);
+  }
+  radarLayerObj = newLayer;
+
+  const label = new Date(frame.time * 1000).toLocaleTimeString('ro-RO', { hour:'2-digit', minute:'2-digit' });
+  const isFuture = frame.time * 1000 > Date.now();
+  document.getElementById('radar-time').textContent = `⏱ ${label}${isFuture ? ' (prognoză)' : ''}`;
+}
+
+function startRadar() {
+  if (state.radarPlaying || !radarFramesLoaded) return;
+  state.radarPlaying = true;
+  document.getElementById('radar-play-btn').textContent = '⏸ Pauză';
+  animateRadar();
+}
+
+function stopRadar() {
+  state.radarPlaying = false;
+  if (state.radarTimer) clearTimeout(state.radarTimer);
+  document.getElementById('radar-play-btn').textContent = '▶ Play';
+}
+
+function toggleRadar() {
+  if (state.radarPlaying) stopRadar(); else startRadar();
+}
+
+function animateRadar() {
+  if (!state.radarPlaying) return;
+  state.radarFrameIndex = (state.radarFrameIndex + 1) % radarFrames.length;
+  showRadarFrame(state.radarFrameIndex);
+  state.radarTimer = setTimeout(animateRadar, 700);
+}
+
+// ═══════════════════════════════════════════════════
+// SEARCH AUTOCOMPLETE
+// ═══════════════════════════════════════════════════
+let searchTimer = null;
+const searchInput = document.getElementById('search-input');
+const acBox = document.getElementById('ac-box');
+
+searchInput.addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  const q = searchInput.value.trim();
+  if (q.length < 2) { acBox.classList.remove('open'); return; }
+  searchTimer = setTimeout(async () => {
+    const results = await geocode(q);
+    renderAutocomplete(results);
+  }, 300);
+});
+
+searchInput.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { acBox.classList.remove('open'); searchInput.blur(); }
+});
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.search-wrap')) acBox.classList.remove('open');
+});
+
+function escHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function renderAutocomplete(results) {
+  acBox.innerHTML = '';
+  if (!results.length) { acBox.classList.remove('open'); return; }
+  results.forEach(r => {
+    const item = document.createElement('div');
+    item.className = 'ac-item';
+    const admin = [r.admin1, r.country].filter(Boolean).join(', ');
+    item.innerHTML = `<strong>${escHtml(r.name)}</strong><span class="country">${escHtml(admin)}</span>`;
+    item.addEventListener('click', () => {
+      searchInput.value = '';
+      acBox.classList.remove('open');
+      loadWeather(r.latitude, r.longitude, r.name, r.country_code || r.country);
+    });
+    acBox.appendChild(item);
+  });
+  acBox.classList.add('open');
+}
+
+// ═══════════════════════════════════════════════════
+// GPS LOCATION
+// ═══════════════════════════════════════════════════
+document.getElementById('btn-location').addEventListener('click', () => {
+  if (!navigator.geolocation) { showToast('Geolocation nu este suportat.'); return; }
+  showToast('Se detectează locația…', 2000);
+  navigator.geolocation.getCurrentPosition(async pos => {
+    const { latitude: lat, longitude: lon } = pos.coords;
+    const name = await reverseGeocode(lat, lon);
+    loadWeather(lat, lon, name, '');
+  }, () => showToast('Nu s-a putut obține locația.', 3000));
+});
+
+// ═══════════════════════════════════════════════════
+// REFRESH
+// ═══════════════════════════════════════════════════
+document.getElementById('btn-refresh').addEventListener('click', () => {
+  loadWeather(state.lat, state.lon, state.name, state.country);
+});
+
+// Auto-refresh every 15 minutes
+setInterval(() => {
+  loadWeather(state.lat, state.lon, state.name, state.country);
+}, 15 * 60 * 1000);
+
+// ═══════════════════════════════════════════════════
+// CLOCK
+// ═══════════════════════════════════════════════════
+function updateClock() {
+  const el = document.getElementById('hero-datetime');
+  if (el && state.weather) {
+    el.textContent = new Date().toLocaleDateString('ro-RO', { weekday:'long', year:'numeric', month:'long', day:'numeric', hour:'2-digit', minute:'2-digit' });
+  }
+}
+setInterval(updateClock, 60000);
+
+// ═══════════════════════════════════════════════════
+// LOADING / TOAST
+// ═══════════════════════════════════════════════════
+function showLoading() { document.getElementById('loading').classList.remove('hidden'); }
+function hideLoading() { document.getElementById('loading').classList.add('hidden'); }
+
+let toastTimer = null;
+function showToast(msg, duration = 3000) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), duration);
+}
+
+// ═══════════════════════════════════════════════════
+// RESPONSIVE SKY ARC
+// ═══════════════════════════════════════════════════
+window.addEventListener('resize', () => {
+  if (state.weather) {
+    drawSkyArc(state.weather.daily.sunrise[0], state.weather.daily.sunset[0]);
+  }
+});
+
+// ═══════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════
+loadWeather(DEFAULT.lat, DEFAULT.lon, DEFAULT.name, DEFAULT.country);
+</script>
+</body>
+</html>
