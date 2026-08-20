@@ -243,10 +243,55 @@ body{
 }
 .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
 
+/* ---------- day detail modal ---------- */
+.modal-overlay{
+  position:fixed; inset:0; z-index:300; background:rgba(5,8,16,0.72); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+  display:none; align-items:flex-end; justify-content:center; opacity:0; transition:opacity .25s ease;
+}
+.modal-overlay.show{display:flex; opacity:1;}
+.modal-panel{
+  width:100%; max-width:640px; max-height:88vh; overflow-y:auto; background:var(--glass-strong);
+  border:1px solid var(--glass-brd); border-radius:24px 24px 0 0; backdrop-filter:blur(28px); -webkit-backdrop-filter:blur(28px);
+  padding:18px 18px 30px; transform:translateY(24px); transition:transform .3s ease; box-shadow:0 -20px 60px rgba(0,0,0,0.5);
+}
+.modal-overlay.show .modal-panel{transform:translateY(0);}
+@media(min-width:660px){
+  .modal-overlay{align-items:center;}
+  .modal-panel{border-radius:24px; max-height:82vh;}
+}
+.modal-head{display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;}
+.modal-day-name{font-family:var(--font-display); font-size:22px; font-weight:700;}
+.modal-day-date{font-size:12px; color:var(--ink-faint); margin-top:2px; text-transform:capitalize;}
+.modal-close{
+  width:34px; height:34px; border-radius:12px; border:1px solid var(--glass-brd); background:rgba(255,255,255,0.06);
+  color:var(--ink); font-size:15px; cursor:pointer; flex-shrink:0; line-height:1;
+}
+.modal-close:active{transform:scale(0.92);}
+.modal-section-title{
+  font-family:var(--font-display); font-size:13px; font-weight:600; text-transform:uppercase; letter-spacing:1px;
+  color:var(--ink-dim); margin:22px 2px 10px; display:flex; align-items:center; gap:8px;
+}
+.modal-section-title::before{content:''; width:5px; height:5px; border-radius:50%; background:var(--accent-cyan); flex-shrink:0;}
+.modal-body .modal-section-title:first-child{margin-top:4px;}
+.modal-chart{height:190px;}
+.modal-chart-sm{height:140px;}
+.modal-no-rain{
+  display:none; padding:16px; text-align:center; font-size:13px; color:var(--ink-dim);
+  background:rgba(255,255,255,0.04); border:1px solid var(--glass-brd); border-radius:14px;
+}
+.modal-summary-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+.modal-summary-card{
+  background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); border-radius:14px; padding:12px;
+}
+.modal-summary-label{font-size:10.5px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:.4px; display:flex; align-items:center; gap:5px;}
+.modal-summary-day{font-size:14px; font-weight:600; margin-top:7px;}
+.modal-summary-val{font-family:var(--font-mono); font-size:13px; color:var(--accent-cyan); margin-top:2px;}
+
 @media(max-width:420px){
   .temp-big{font-size:76px;}
   .metrics-grid{grid-template-columns:repeat(2,1fr);}
   .day-row{grid-template-columns:62px 26px 1fr 78px 30px; font-size:13px;}
+  .modal-summary-grid{grid-template-columns:1fr;}
 }
 </style>
 </head>
@@ -391,6 +436,35 @@ body{
 
 <div class="toast" id="toast"></div>
 
+<!-- DAY DETAIL MODAL -->
+<div class="modal-overlay" id="dayModalOverlay">
+  <div class="modal-panel">
+    <div class="modal-head">
+      <div>
+        <div class="modal-day-name" id="modalDayName">--</div>
+        <div class="modal-day-date" id="modalDayDate">--</div>
+      </div>
+      <button class="modal-close" id="modalCloseBtn" aria-label="Închide">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-section-title">Ploaie &amp; temperatură — 24h</div>
+      <div class="chart-canvas-wrap modal-chart"><canvas id="dayRainTempChart"></canvas></div>
+
+      <div id="modalRain6hWrap">
+        <div class="modal-section-title">Ploaie — următoarele 6 ore</div>
+        <div class="chart-canvas-wrap modal-chart-sm"><canvas id="dayRain6hChart"></canvas></div>
+      </div>
+      <div class="modal-no-rain" id="modalNoRain6h">☀️ Nu se așteaptă ploaie în următoarele 6 ore.</div>
+
+      <div class="modal-section-title">Vânt — următoarele 24h (din prezent)</div>
+      <div class="chart-canvas-wrap modal-chart-sm"><canvas id="dayWind24Chart"></canvas></div>
+
+      <div class="modal-section-title">Rezumat — 10 zile</div>
+      <div class="modal-summary-grid" id="modalSummaryGrid"></div>
+    </div>
+  </div>
+</div>
+
 <script>
 (function(){
 "use strict";
@@ -491,10 +565,15 @@ async function geocode(query){
 
 async function reverseGeocode(lat, lon){
   try{
-    const url = `https://geocoding-api.open-meteo.com/v1/search?name=&count=1&language=ro&format=json&latitude=${lat}&longitude=${lon}`;
-    // Open-Meteo geocoding doesn't do reverse; fallback to generic label
-  }catch(e){}
-  return null;
+    const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=ro`;
+    const res = await fetch(url);
+    if(!res.ok) return null;
+    const data = await res.json();
+    const name = data.city || data.locality || data.principalSubdivision || data.countryName || 'Locația mea';
+    const admin = data.principalSubdivision || '';
+    const country = data.countryName || '';
+    return {name, admin, country};
+  }catch(e){ return null; }
 }
 
 async function fetchForecast(lat, lon){
@@ -684,16 +763,8 @@ function renderDaily(){
       </div>
       <div class="day-pop">💧 ${d.precipitation_probability_max[i]}%</div>
       <div class="day-chevron">›</div>
-      <div class="day-detail">
-        <div>Precipitații<b>${d.precipitation_sum[i].toFixed(1)} mm</b></div>
-        <div>Vânt max<b>${Math.round(d.wind_speed_10m_max[i])} km/h</b></div>
-        <div>UV max<b>${Math.round(d.uv_index_max[i])}</b></div>
-        <div>Răsărit<b>${fmtTime(d.sunrise[i])}</b></div>
-        <div>Apus<b>${fmtTime(d.sunset[i])}</b></div>
-        <div>Direcție vânt<b>${windDirLabel(d.wind_direction_10m_dominant[i])}</b></div>
-      </div>
     `;
-    row.addEventListener('click', ()=> row.classList.toggle('expanded'));
+    row.addEventListener('click', ()=> openDayModal(i));
     list.appendChild(row);
   }
 }
@@ -751,6 +822,142 @@ function renderCharts(){
       plugins:{ legend:{display:true, labels:{boxWidth:10, font:{size:11}}} },
       scales:{ x:{grid:{display:false}, ticks:{font:{size:11}}}, y:{grid:{color:'rgba(255,255,255,0.06)'}, ticks:{font:{size:10}, callback:v=>v+'°'}} }
     }
+  });
+}
+
+/* ---------- day detail modal ---------- */
+function argmax(arr){ let mi=0; for(let i=1;i<arr.length;i++){ if(arr[i]>arr[mi]) mi=i; } return mi; }
+function argmin(arr){ let mi=0; for(let i=1;i<arr.length;i++){ if(arr[i]<arr[mi]) mi=i; } return mi; }
+
+function openDayModal(i){
+  const d = state.daily, h = state.hourly;
+  if(!d || !h) return;
+
+  $('#modalDayName').textContent = dayNameShort(d.time[i], i);
+  $('#modalDayDate').textContent = new Date(d.time[i]+'T00:00').toLocaleDateString('ro-RO', {weekday:'long', day:'2-digit', month:'long'});
+
+  /* --- hourly slice for the selected day (rain + temp, 24h) --- */
+  const dayDateStr = d.time[i]; // 'YYYY-MM-DD'
+  const idxs = [];
+  for(let k=0;k<h.time.length;k++){ if(h.time[k].startsWith(dayDateStr)) idxs.push(k); }
+  const dayLabels = idxs.map(k=>fmtHour(h.time[k]));
+  const dayRain = idxs.map(k=>Math.round((h.precipitation[k]||0)*10)/10);
+  const dayTemp = idxs.map(k=>Math.round(h.temperature_2m[k]));
+  renderDayRainTempChart(dayLabels, dayRain, dayTemp);
+
+  /* --- rain in the next 6h from the actual present moment --- */
+  const now = new Date();
+  let nowIdx = h.time.findIndex(t=> new Date(t) >= now);
+  if(nowIdx<0) nowIdx = 0;
+  const rain6Labels = h.time.slice(nowIdx, nowIdx+6).map(t=>fmtHour(t));
+  const rain6Vals = h.precipitation.slice(nowIdx, nowIdx+6).map(v=>Math.round((v||0)*10)/10);
+  const rain6Sum = rain6Vals.reduce((a,b)=>a+b,0);
+  if(rain6Sum > 0){
+    $('#modalRain6hWrap').style.display = '';
+    $('#modalNoRain6h').style.display = 'none';
+    renderRain6hChart(rain6Labels, rain6Vals);
+  }else{
+    $('#modalRain6hWrap').style.display = 'none';
+    $('#modalNoRain6h').style.display = '';
+  }
+
+  /* --- wind for the next 24h from the actual present moment --- */
+  const wind24Labels = h.time.slice(nowIdx, nowIdx+24).map(t=>fmtHour(t));
+  const wind24Vals = h.wind_speed_10m.slice(nowIdx, nowIdx+24).map(v=>Math.round(v));
+  renderWind24Chart(wind24Labels, wind24Vals);
+
+  /* --- 10-day summary --- */
+  renderModalSummary();
+
+  $('#dayModalOverlay').classList.add('show');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeDayModal(){
+  $('#dayModalOverlay').classList.remove('show');
+  document.body.style.overflow = '';
+}
+
+function renderDayRainTempChart(labels, rain, temp){
+  if(typeof Chart==='undefined') return;
+  if(state.charts.dayRainTemp) state.charts.dayRainTemp.destroy();
+  const ctx = $('#dayRainTempChart').getContext('2d');
+  const gradientBar = ctx.createLinearGradient(0,0,0,190);
+  gradientBar.addColorStop(0,'#5fd0e8'); gradientBar.addColorStop(1,'rgba(95,208,232,0.12)');
+  state.charts.dayRainTemp = new Chart(ctx, {
+    data:{ labels, datasets:[
+      { type:'bar', label:'Ploaie (mm)', data:rain, backgroundColor:gradientBar, borderRadius:5, maxBarThickness:14, yAxisID:'y' },
+      { type:'line', label:'Temp (°C)', data:temp, borderColor:'#ffb454', backgroundColor:'transparent', borderWidth:2, pointRadius:2, tension:.35, yAxisID:'y1' }
+    ]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index', intersect:false},
+      plugins:{ legend:{display:true, labels:{boxWidth:10, font:{size:10}}} },
+      scales:{
+        x:{ grid:{display:false}, ticks:{font:{size:9}, maxRotation:0, autoSkip:true, maxTicksLimit:8} },
+        y:{ position:'left', grid:{color:'rgba(255,255,255,0.06)'}, ticks:{font:{size:9}}, title:{display:true,text:'mm',font:{size:9}} },
+        y1:{ position:'right', grid:{display:false}, ticks:{font:{size:9}, callback:v=>v+'°'} }
+      }
+    }
+  });
+}
+
+function renderRain6hChart(labels, vals){
+  if(typeof Chart==='undefined') return;
+  if(state.charts.rain6h) state.charts.rain6h.destroy();
+  const ctx = $('#dayRain6hChart').getContext('2d');
+  const gradientBar = ctx.createLinearGradient(0,0,0,140);
+  gradientBar.addColorStop(0,'#5fd0e8'); gradientBar.addColorStop(1,'rgba(95,208,232,0.12)');
+  state.charts.rain6h = new Chart(ctx, {
+    type:'bar',
+    data:{ labels, datasets:[{ label:'mm', data:vals, backgroundColor:gradientBar, borderRadius:6, maxBarThickness:34 }] },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false} },
+      scales:{
+        x:{ grid:{display:false}, ticks:{font:{size:10}} },
+        y:{ grid:{color:'rgba(255,255,255,0.06)'}, ticks:{font:{size:9}}, title:{display:true,text:'mm',font:{size:9}} }
+      }
+    }
+  });
+}
+
+function renderWind24Chart(labels, vals){
+  if(typeof Chart==='undefined') return;
+  if(state.charts.wind24) state.charts.wind24.destroy();
+  const ctx = $('#dayWind24Chart').getContext('2d');
+  state.charts.wind24 = new Chart(ctx, {
+    type:'line',
+    data:{ labels, datasets:[{ label:'km/h', data:vals, borderColor:'#b39dff', backgroundColor:'rgba(179,157,255,0.14)', fill:true, tension:.35, pointRadius:0, borderWidth:2 }] },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false} },
+      scales:{
+        x:{ grid:{display:false}, ticks:{font:{size:9}, maxRotation:0, autoSkip:true, maxTicksLimit:8} },
+        y:{ grid:{color:'rgba(255,255,255,0.06)'}, ticks:{font:{size:9}}, title:{display:true,text:'km/h',font:{size:9}} }
+      }
+    }
+  });
+}
+
+function renderModalSummary(){
+  const d = state.daily;
+  const grid = $('#modalSummaryGrid'); grid.innerHTML='';
+  const rIdx = argmax(d.precipitation_sum);
+  const hotIdx = argmax(d.temperature_2m_max);
+  const coldIdx = argmin(d.temperature_2m_min);
+  const windIdx = argmax(d.wind_speed_10m_max);
+  const items = [
+    {icon:'💧', label:'Cea mai ploioasă', day:dayNameShort(d.time[rIdx],rIdx)+' · '+dateShort(d.time[rIdx]), val:d.precipitation_sum[rIdx].toFixed(1)+' mm'},
+    {icon:'🔥', label:'Cea mai caldă', day:dayNameShort(d.time[hotIdx],hotIdx)+' · '+dateShort(d.time[hotIdx]), val:Math.round(d.temperature_2m_max[hotIdx])+'°C'},
+    {icon:'❄️', label:'Cea mai rece', day:dayNameShort(d.time[coldIdx],coldIdx)+' · '+dateShort(d.time[coldIdx]), val:Math.round(d.temperature_2m_min[coldIdx])+'°C'},
+    {icon:'💨', label:'Cea mai vântoasă', day:dayNameShort(d.time[windIdx],windIdx)+' · '+dateShort(d.time[windIdx]), val:Math.round(d.wind_speed_10m_max[windIdx])+' km/h'}
+  ];
+  items.forEach(it=>{
+    const c = document.createElement('div');
+    c.className='modal-summary-card';
+    c.innerHTML = `<div class="modal-summary-label">${it.icon} ${it.label}</div><div class="modal-summary-day">${it.day}</div><div class="modal-summary-val">${it.val}</div>`;
+    grid.appendChild(c);
   });
 }
 
@@ -897,6 +1104,15 @@ document.addEventListener('click', (e)=>{
   if(!e.target.closest('.search-wrap')) $('#suggestions').style.display='none';
 });
 
+/* ---------- day detail modal controls ---------- */
+$('#modalCloseBtn').addEventListener('click', closeDayModal);
+$('#dayModalOverlay').addEventListener('click', (e)=>{
+  if(e.target.id==='dayModalOverlay') closeDayModal();
+});
+document.addEventListener('keydown', (e)=>{
+  if(e.key==='Escape' && $('#dayModalOverlay').classList.contains('show')) closeDayModal();
+});
+
 /* ---------- geolocation ---------- */
 $('#locBtn').addEventListener('click', ()=>{
   if(!navigator.geolocation){ toast('Geolocalizarea nu este disponibilă'); return; }
@@ -904,9 +1120,8 @@ $('#locBtn').addEventListener('click', ()=>{
   navigator.geolocation.getCurrentPosition(async (pos)=>{
     const {latitude, longitude} = pos.coords;
     let name='Locația mea', admin='', country='';
-    try{
-      const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=&latitude=${latitude}&longitude=${longitude}&count=1&language=ro`);
-    }catch(e){}
+    const place = await reverseGeocode(latitude, longitude);
+    if(place){ name = place.name; admin = place.admin; country = place.country; }
     loadLocation(latitude, longitude, name, admin, country);
   }, (err)=>{
     showLoading(false);
