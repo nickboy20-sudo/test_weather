@@ -296,17 +296,6 @@ body{
   color:#fff; padding:7px 14px; border-radius:100px; font-size:13px; cursor:pointer;
 }
 
-#bgTestLabel{
-  position:fixed; top:calc(var(--safe-t) + 10px); left:50%; transform:translateX(-50%);
-  background: rgba(20,20,30,0.85);
-  border:1px solid var(--glass-border);
-  padding:8px 16px; border-radius:100px;
-  font-size:13px; color:#fff; z-index:150;
-  display:none; align-items:center; gap:8px;
-  backdrop-filter: blur(20px);
-}
-#bgTestLabel.show{ display:flex; }
-#bgTestLabel .n{ color: var(--text-faint); font-size:11px; }
 
 @media (max-width:380px){
   .hero-temp{ font-size:74px; }
@@ -353,6 +342,19 @@ body{ overscroll-behavior-y: contain; -webkit-font-smoothing: antialiased; }
   *{ animation-duration:0.01ms !important; }
 }
 
+
+/* fix linie mică sub search - ascunde favorites când e gol */
+.favorites:empty{
+  display:none !important;
+  margin:0 !important;
+  padding:0 !important;
+  height:0 !important;
+  min-height:0 !important;
+}
+.favorites{
+  min-height: 0;
+}
+
 </style>
 </head>
 <body>
@@ -361,19 +363,17 @@ body{ overscroll-behavior-y: contain; -webkit-font-smoothing: antialiased; }
 <div id="bgSky"></div>
 <canvas id="bgCanvas"></canvas>
 <div id="bgVignette"></div>
-<div id="bgTestLabel"></div>
 
 <div class="app">
 
   <div class="search-row">
     <div class="search-box">
-      <input id="searchInput" type="text" autocomplete="off" placeholder="Caută un oraș sau o localitate">
+      <input id="searchInput" type="text" autocomplete="off" placeholder="Caută un oraș...">
       <button class="search-clear" id="clearBtn">✕</button>
       <div class="suggestions hidden" id="suggestions"></div>
     </div>
     <button class="icon-btn" id="gpsBtn" title="Locația mea">📍</button>
     <button class="icon-btn" id="favBtn" title="Salvează localitatea">☆</button>
-    <button class="icon-btn" id="bgTestBtn" title="Testează toate fundalurile (5s fiecare)">🎞️</button>
   </div>
 
   <div class="favorites" id="favorites"></div>
@@ -514,7 +514,10 @@ function loadingDone(){
 function loadFavorites(){
   try{
     const raw = localStorage.getItem('weatherFavorites');
-    state.favorites = raw ? JSON.parse(raw) : [];
+    let favs = raw ? JSON.parse(raw) : [];
+    // curăță intrări invalide care creau linia mică
+    favs = favs.filter(f => f && f.name && typeof f.lat === 'number' && typeof f.lon === 'number' && f.name.trim().length>1);
+    state.favorites = favs;
   }catch(e){ state.favorites = []; }
   renderFavorites();
 }
@@ -546,7 +549,13 @@ function updateFavBtn(){
 function renderFavorites(){
   const wrap = $('favorites');
   wrap.textContent='';
-  state.favorites.forEach(f=>{
+  // filtrează favorite fără nume (cauza liniei mici)
+  const validFavs = (state.favorites || []).filter(f => f && f.name && f.name.trim().length > 1);
+  if(validFavs.length !== state.favorites.length){
+    state.favorites = validFavs;
+    saveFavorites();
+  }
+  validFavs.forEach(f=>{
     const chip = document.createElement('button');
     chip.className='fav-chip';
     chip.textContent = f.name;
@@ -556,6 +565,12 @@ function renderFavorites(){
     chip.addEventListener('click', ()=> setLocation(f));
     wrap.appendChild(chip);
   });
+  // ascunde complet containerul dacă nu există favorite
+  if(validFavs.length === 0){
+    wrap.style.display = 'none';
+  } else {
+    wrap.style.display = 'flex';
+  }
 }
 
 /* ============================================================
@@ -1491,76 +1506,6 @@ document.addEventListener('visibilitychange', ()=>{
 });
 
 
-/* ============================================================
-   TEST FUNDALURI — ciclează toate combinațiile cer/vreme, 5s fiecare
-============================================================ */
-const BG_TEST_LIST = [
-  { cat:'clear',    isDay:true,  precip:0,   cloud:5,  label:'Senin — zi' },
-  { cat:'clear',    isDay:false, precip:0,   cloud:5,  label:'Senin — noapte' },
-  { cat:'cloudy',   isDay:true,  precip:0,   cloud:45, label:'Parțial noros — zi' },
-  { cat:'cloudy',   isDay:false, precip:0,   cloud:45, label:'Parțial noros — noapte' },
-  { cat:'overcast', isDay:true,  precip:0,   cloud:95, label:'Cer noros — zi' },
-  { cat:'overcast', isDay:false, precip:0,   cloud:95, label:'Cer noros — noapte' },
-  { cat:'fog',      isDay:true,  precip:0,   cloud:80, label:'Ceață — zi' },
-  { cat:'fog',      isDay:false, precip:0,   cloud:80, label:'Ceață — noapte' },
-  { cat:'drizzle',  isDay:true,  precip:0.6, cloud:70, label:'Burniță — zi' },
-  { cat:'drizzle',  isDay:false, precip:0.6, cloud:70, label:'Burniță — noapte' },
-  { cat:'rain',     isDay:true,  precip:3,   cloud:85, label:'Ploaie — zi' },
-  { cat:'rain',     isDay:false, precip:3,   cloud:85, label:'Ploaie — noapte' },
-  { cat:'storm',    isDay:true,  precip:6,   cloud:95, label:'Furtună — zi' },
-  { cat:'storm',    isDay:false, precip:6,   cloud:95, label:'Furtună — noapte' },
-  { cat:'snow',     isDay:true,  precip:2,   cloud:80, label:'Ninsoare — zi' },
-  { cat:'snow',     isDay:false, precip:2,   cloud:80, label:'Ninsoare — noapte' },
-];
-let bgTestActive = false;
-let bgTestTimer = null;
-let bgTestIndex = 0;
-
-function initBgTest(){
-  $('bgTestBtn').addEventListener('click', ()=>{
-    bgTestActive ? stopBgTest() : startBgTest();
-  });
-}
-
-function startBgTest(){
-  bgTestActive = true;
-  bgTestIndex = 0;
-  $('bgTestBtn').classList.add('active');
-  $('bgTestLabel').classList.add('show');
-  showBgTestFrame();
-  bgTestTimer = setInterval(()=>{
-    bgTestIndex = (bgTestIndex + 1) % BG_TEST_LIST.length;
-    showBgTestFrame();
-  }, 5000);
-}
-
-function showBgTestFrame(){
-  const f = BG_TEST_LIST[bgTestIndex];
-  setBackground(f.cat, f.isDay, f.precip, f.cloud);
-  const lbl = $('bgTestLabel');
-  lbl.textContent = '';
-  const txt = document.createElement('span');
-  txt.textContent = '🎞️ ' + f.label;
-  const n = document.createElement('span');
-  n.className = 'n';
-  n.textContent = (bgTestIndex+1) + ' / ' + BG_TEST_LIST.length;
-  lbl.appendChild(txt);
-  lbl.appendChild(n);
-}
-
-function stopBgTest(){
-  bgTestActive = false;
-  clearInterval(bgTestTimer);
-  bgTestTimer = null;
-  $('bgTestBtn').classList.remove('active');
-  $('bgTestLabel').classList.remove('show');
-  // restore the real current weather background, if data is loaded
-  if(state.data && state.data.current){
-    const cur = state.data.current;
-    const info = weatherInfo(cur.weather_code, cur.is_day);
-    setBackground(info.cat, !!cur.is_day, cur.precipitation||0, cur.cloud_cover||0);
-  }
-}
 
 /* ============================================================
    INIT
@@ -1568,7 +1513,6 @@ function stopBgTest(){
 $('favBtn').addEventListener('click', toggleFavorite);
 loadFavorites();
 fetchWeather();
-initBgTest();
 
 })();
 </script>
