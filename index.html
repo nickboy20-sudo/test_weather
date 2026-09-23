@@ -374,6 +374,10 @@
     .charts-grid{grid-template-columns:1fr;}
     .day-row{grid-template-columns:74px 34px 1fr auto;}
     .radar-frame-wrap{height:340px;}
+    /* Ventusky afișează o bară cu orele în partea de jos pe mobil;
+       o "tăiem" mărind iframe-ul peste înălțimea containerului
+       (care are overflow:hidden), ca bara să rămână sub cadrul vizibil. */
+    .radar-frame-wrap iframe{height:calc(100% + 58px);}
   }
 </style>
 </head>
@@ -591,7 +595,10 @@ function renderHero(){
   document.getElementById("hero-icon").alt = c.weather[0].description;
 
   const tz = state.timezoneOffset;
+  const nextBlock = state.forecastList[0];
+  const rainNextHour = nextBlock && nextBlock.rain ? (nextBlock.rain["3h"]||0) / 3 : 0;
   const stats = [
+    { label:"Ploaie în următoarea oră", value:`${rainNextHour.toFixed(1)} mm` },
     { label:"Umiditate", value:`${c.main.humidity}%` },
     { label:"Vânt", value:`${Math.round(c.wind.speed * 3.6)} km/h` },
     { label:"Presiune", value:`${c.main.pressure} hPa` },
