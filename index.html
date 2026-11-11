@@ -1,0 +1,1298 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vremea - Prognoza meteo</title>
+<meta name="theme-color" content="#1e5490">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --text: #f4f8fc;
+    --muted: #d3e2f1;
+    --glass: rgba(255, 255, 255, 0.15);
+    --glass-strong: rgba(255, 255, 255, 0.2);
+    --border: rgba(255, 255, 255, 0.22);
+    --accent: #7fd3ff;
+    --sun: #ffd27a;
+    --ok: #9be7b5;
+    --error-bg: rgba(150, 25, 25, 0.7);
+    --radius: 20px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+    color: var(--text);
+    background: #1e5490;
+    overflow-x: hidden;
+  }
+  h1, h2, h3, strong, b { font-weight: 800; }
+  h1, h2, h3 { line-height: 1.2; margin: 0; }
+  p { margin: 0; }
+  button, input { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--sun); outline-offset: 2px; }
+
+  #sky {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  .app {
+    position: relative;
+    z-index: 1;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 24px 16px 32px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+
+  .card {
+    background: var(--glass);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    min-width: 0;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16);
+    animation: rise 0.6s ease both;
+  }
+  .card h2 { font-size: 18px; margin-bottom: 16px; }
+  .card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .card-head h2 { margin-bottom: 4px; }
+
+  .muted { color: var(--muted); font-size: 14px; }
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: none; }
+  }
+
+  .topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .brand { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; }
+
+  .search { display: flex; gap: 8px; flex: 1; max-width: 480px; min-width: 0; }
+  .search-box { position: relative; flex: 1; min-width: 0; }
+  .search-icon {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 18px;
+    height: 18px;
+    color: var(--muted);
+    pointer-events: none;
+  }
+  #search {
+    width: 100%;
+    height: 48px;
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    background: rgba(8, 28, 56, 0.45);
+    padding: 0 16px 0 44px;
+    font-size: 16px;
+    transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+  }
+  #search::placeholder { color: rgba(230, 240, 250, 0.8); }
+  #search:focus {
+    outline: none;
+    border-color: var(--sun);
+    background: rgba(8, 28, 56, 0.7);
+    box-shadow: 0 0 0 3px rgba(255, 210, 122, 0.25);
+  }
+
+  .suggestions {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    z-index: 20;
+    margin: 0;
+    padding: 6px;
+    list-style: none;
+    max-height: 320px;
+    overflow-y: auto;
+    background: rgba(10, 32, 62, 0.97);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+    animation: rise 0.25s ease both;
+  }
+  .suggestions li {
+    display: flex;
+    flex-direction: column;
+    padding: 10px 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .suggestions li[role="option"]:hover,
+  .suggestions li.active { background: rgba(255, 255, 255, 0.14); }
+  .suggestions .sug-sub { font-size: 13px; color: var(--muted); }
+  .suggestions .sug-empty { color: var(--muted); cursor: default; }
+
+  .icon-btn {
+    flex: 0 0 48px;
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    background: var(--glass-strong);
+    display: grid;
+    place-items: center;
+    transition: transform 0.15s, background 0.2s;
+  }
+  .icon-btn:hover { background: rgba(255, 255, 255, 0.3); }
+  .icon-btn:active { transform: scale(0.94); }
+  .icon-btn svg { width: 22px; height: 22px; }
+
+  .status {
+    padding: 12px 16px;
+    border-radius: 14px;
+    background: var(--glass-strong);
+    border: 1px solid var(--border);
+    font-size: 15px;
+    animation: rise 0.3s ease both;
+  }
+  .status.error { background: var(--error-bg); }
+
+  .ico { width: 24px; height: 24px; flex: 0 0 auto; }
+  .ico.sm { width: 28px; height: 28px; }
+  .ico.big { width: 120px; height: 120px; color: var(--sun); }
+
+  .hero { display: grid; gap: 20px; }
+  .hero-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .eyebrow {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .hero h1 { font-size: clamp(28px, 4vw, 40px); letter-spacing: -0.02em; }
+  .place-meta { color: var(--muted); margin-top: 4px; }
+
+  .fav-btn {
+    height: 40px;
+    padding: 0 16px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--glass-strong);
+    font-weight: 600;
+    font-size: 15px;
+    transition: background 0.2s, transform 0.15s;
+  }
+  .fav-btn:hover { background: rgba(255, 255, 255, 0.3); }
+  .fav-btn:active { transform: scale(0.97); }
+  .fav-btn.active { background: var(--sun); color: #1b2a3a; border-color: var(--sun); }
+
+  .hero-main {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+  .temp {
+    font-size: clamp(64px, 12vw, 104px);
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -0.04em;
+  }
+  .condition { font-size: 20px; font-weight: 600; margin-top: 8px; }
+  .hero-rain {
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 15px;
+  }
+
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+  }
+  .metric {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 16px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    transition: transform 0.2s, background 0.2s;
+  }
+  .metric:hover { transform: translateY(-2px); background: rgba(255, 255, 255, 0.16); }
+  .m-label { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .m-value { font-size: 22px; font-weight: 800; }
+  .m-sub { font-size: 13px; color: var(--muted); }
+
+  .hourly {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    padding-bottom: 8px;
+    scrollbar-width: thin;
+  }
+  .hour {
+    flex: 0 0 84px;
+    scroll-snap-align: start;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 14px 8px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    text-align: center;
+    font-size: 14px;
+  }
+  .hour.now { background: rgba(255, 210, 122, 0.22); border-color: rgba(255, 210, 122, 0.6); }
+  .hour strong { font-size: 18px; }
+  .h-time { color: var(--muted); font-size: 13px; }
+  .h-prob { color: var(--accent); font-size: 13px; }
+  .h-mm { color: var(--muted); font-size: 13px; }
+
+  .split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+    gap: 24px;
+    align-items: start;
+  }
+  .day-list { display: flex; flex-direction: column; gap: 6px; }
+  .day-row {
+    display: grid;
+    grid-template-columns: minmax(84px, auto) 28px 1fr auto;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 14px;
+    border: 1px solid transparent;
+    background: rgba(255, 255, 255, 0.06);
+    text-align: left;
+    transition: background 0.2s, transform 0.2s, border-color 0.2s;
+  }
+  .day-row:hover { background: rgba(255, 255, 255, 0.16); transform: translateX(4px); }
+  .day-row[aria-pressed="true"] { background: rgba(255, 255, 255, 0.22); border-color: var(--accent); }
+  .day-name { font-weight: 600; font-size: 15px; }
+  .day-temps { font-size: 15px; }
+  .day-temps .muted { margin-left: 6px; }
+  .day-rain { display: flex; flex-direction: column; align-items: flex-end; font-size: 14px; color: var(--accent); }
+  .day-rain small { color: var(--muted); font-size: 12px; }
+
+  .detail-head { margin-bottom: 16px; }
+  .detail-head h2 { margin-bottom: 4px; }
+
+  .chart-wrap { position: relative; height: 300px; width: 100%; }
+  .chart-wrap.tall { height: 340px; }
+
+  .stat { display: flex; flex-direction: column; align-items: flex-end; text-align: right; }
+  .stat-value { font-size: clamp(30px, 4vw, 40px); font-weight: 800; color: var(--ok); line-height: 1.1; }
+  .stat-note { color: var(--muted); font-size: 14px; margin-top: 4px; }
+
+  .radar {
+    width: 100%;
+    height: 460px;
+    border: 0;
+    border-radius: 16px;
+    background: rgba(0, 0, 0, 0.25);
+  }
+
+  .fav-chips { display: flex; flex-wrap: wrap; gap: 10px; margin: 0; padding: 0; list-style: none; }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 4px 4px 4px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.14);
+    border: 1px solid var(--border);
+  }
+  .chip-open {
+    border: 0;
+    background: transparent;
+    padding: 6px 10px;
+    font-weight: 600;
+    border-radius: 999px;
+    transition: background 0.2s;
+  }
+  .chip-open:hover { background: rgba(255, 255, 255, 0.16); }
+  .chip-del {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 0;
+    background: rgba(255, 255, 255, 0.12);
+    font-size: 18px;
+    line-height: 1;
+    transition: background 0.2s;
+  }
+  .chip-del:hover { background: rgba(255, 120, 120, 0.45); }
+
+  .footer { text-align: center; color: var(--muted); font-size: 13px; padding: 8px 0; }
+
+  @media (max-width: 900px) {
+    .split { grid-template-columns: minmax(0, 1fr); }
+  }
+
+  @media (max-width: 640px) {
+    .app { padding: 16px 12px 24px; gap: 16px; }
+    .card { padding: 18px; border-radius: 18px; }
+    .card h2 { font-size: 17px; }
+    .topbar { gap: 12px; }
+    .search { max-width: none; width: 100%; }
+    .ico.big { width: 96px; height: 96px; }
+    .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .metric { padding: 14px; }
+    .m-value { font-size: 19px; }
+    .stat { align-items: flex-start; text-align: left; }
+    .chart-wrap { height: 240px; }
+    .chart-wrap.tall { height: 260px; }
+    .radar { height: 340px; }
+    .day-row { grid-template-columns: minmax(76px, auto) 24px 1fr auto; gap: 8px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .card, .status, .suggestions { animation: none; }
+    * { transition: none !important; }
+  }
+</style>
+  <meta property="og:image" content="https://bolt.new/static/og_default.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://bolt.new/static/og_default.png">
+</head>
+<body>
+<canvas id="sky" aria-hidden="true"></canvas>
+
+<main class="app">
+  <header class="topbar">
+    <div class="brand">Vremea</div>
+    <div class="search">
+      <div class="search-box">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="search" type="text" placeholder="Caută un oraș sau o localitate..." autocomplete="off" role="combobox" aria-label="Caută locația" aria-autocomplete="list" aria-controls="suggestions" aria-expanded="false">
+        <ul id="suggestions" class="suggestions" role="listbox" hidden></ul>
+      </div>
+      <button id="gpsBtn" class="icon-btn" type="button" title="Folosește locația mea (GPS)" aria-label="Folosește locația mea GPS">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div id="status" class="status" role="status" hidden></div>
+
+  <section class="card hero" aria-labelledby="placeName">
+    <div class="hero-top">
+      <div>
+        <p class="eyebrow" id="heroTime"></p>
+        <h1 id="placeName"></h1>
+        <p class="place-meta" id="placeMeta"></p>
+      </div>
+      <button id="favBtn" class="fav-btn" type="button" aria-pressed="false">Salvează locația</button>
+    </div>
+    <div class="hero-main">
+      <div id="heroIcon"></div>
+      <div>
+        <div class="temp" id="currentTemp">-</div>
+        <div class="condition" id="condition"></div>
+        <div class="muted" id="feelsLike"></div>
+        <div class="muted" id="hiLo"></div>
+      </div>
+    </div>
+    <p class="hero-rain" id="heroRain"></p>
+  </section>
+
+  <section class="card" aria-labelledby="metricsTitle">
+    <h2 id="metricsTitle">Detalii acum</h2>
+    <div class="metrics">
+      <div class="metric" data-metric="humidity"><span class="m-label">Umiditate</span><strong class="m-value">-</strong><small class="m-sub"></small></div>
+      <div class="metric" data-metric="dew"><span class="m-label">Punct de rouă</span><strong class="m-value">-</strong><small class="m-sub"></small></div>
+      <div class="metric" data-metric="wind"><span class="m-label">Vânt</span><strong class="m-value">-</strong><small class="m-sub"></small></div>
+      <div class="metric" data-metric="gusts"><span class="m-label">Rafale</span><strong class="m-value">-</strong><small class="m-sub"></small></div>
+      <div class="metric" data-metric="pressure"><span class="m-label">Presiune</span><strong class="m-value">-</strong><small class="m-sub"></small></div>
+      <div class="metric" data-metric="visibility"><span class="m-label">Vizibilitate</span><strong class="m-value">-</strong><small class="m-sub"></small></div>
+      <div class="metric" data-metric="uv"><span class="m-label">Indice UV</span><strong class="m-value">-</strong><small class="m-sub"></small></div>
+      <div class="metric" data-metric="aqi"><span class="m-label">Calitatea aerului</span><strong class="m-value">-</strong><small class="m-sub"></small></div>
+      <div class="metric" data-metric="sun"><span class="m-label">Răsărit / Apus</span><strong class="m-value">-</strong><small class="m-sub"></small></div>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="hourlyTitle">
+    <h2 id="hourlyTitle">Următoarele 24 de ore</h2>
+    <div class="hourly" id="hourly"></div>
+  </section>
+
+  <section class="split">
+    <div class="card" aria-labelledby="dailyTitle">
+      <h2 id="dailyTitle">Prognoza pe 10 zile</h2>
+      <p class="muted" style="margin-bottom: 12px;">Apasă pe o zi pentru detalii pe ore.</p>
+      <div class="day-list" id="dailyList"></div>
+    </div>
+    <div class="card" aria-labelledby="dayTitle">
+      <div class="detail-head">
+        <h2 id="dayTitle"></h2>
+        <p class="muted" id="daySummary"></p>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="dayChart" aria-label="Grafic temperatură și precipitații pe ore"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="rainTitle">
+    <div class="card-head">
+      <div>
+        <h2 id="rainTitle">Precipitații în următoarele 10 zile</h2>
+        <p class="muted" id="rainNote"></p>
+      </div>
+      <div class="stat">
+        <span class="muted">Total acumulat în 10 zile</span>
+        <span class="stat-value" id="rainTotal">-</span>
+      </div>
+    </div>
+    <div class="chart-wrap tall">
+      <canvas id="rainChart" aria-label="Grafic precipitații zilnice și total acumulat"></canvas>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="windTitle">
+    <div class="card-head">
+      <div>
+        <h2 id="windTitle">Viteza vântului în următoarele 24 de ore</h2>
+        <p class="muted" id="windMaxNote"></p>
+      </div>
+      <div class="stat">
+        <span class="muted">Maxim în perioadă</span>
+        <span class="stat-value" id="windMax">-</span>
+      </div>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="windChart" aria-label="Grafic viteza vântului și rafale"></canvas>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="radarTitle">
+    <h2 id="radarTitle">Radar de precipitații (Windy)</h2>
+    <p class="muted" style="margin-bottom: 16px;">Folosește cronologia din harta Windy pentru a vedea ultima oră de precipitații.</p>
+    <iframe id="radar" class="radar" title="Radar Windy" loading="lazy" allowfullscreen></iframe>
+  </section>
+
+  <section class="card" aria-labelledby="favTitle">
+    <h2 id="favTitle">Locații salvate</h2>
+    <p class="muted" id="favEmpty" style="margin-bottom: 12px;">Nu ai locații salvate. Apasă „Salvează locația” pentru a adăuga una.</p>
+    <ul class="fav-chips" id="favList"></ul>
+  </section>
+
+  <footer class="footer">Date meteo: Open-Meteo · Radar: Windy · Locații: Open-Meteo și BigDataCloud</footer>
+</main>
+
+<script>
+  const DEFAULT_PLACE = { name: 'București', country: 'România', latitude: 44.4268, longitude: 26.1025 };
+  const SUPABASE_URL = 'https://tswiizsfdyqhrqurfgrv.supabase.co';
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzd2lpenNmZHlxaHJxdXJmZ3J2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQzOTUyNjUsImV4cCI6MjEwOTk3MTI2NX0.2v4Hqf5IHernl2zJZGS-hTa_lNxIdfPmXe-A7gfhWEY';
+  const FAV_URL = `${SUPABASE_URL}/rest/v1/favorite_locations`;
+  const dbHeaders = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' };
+
+  const CURRENT_VARS = 'temperature_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,pressure_msl';
+  const HOURLY_VARS = 'temperature_2m,relative_humidity_2m,dew_point_2m,precipitation_probability,precipitation,weather_code,visibility,wind_speed_10m,wind_gusts_10m,uv_index,is_day';
+  const DAILY_VARS = 'weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_sum,precipitation_probability_max';
+
+  const WMO = {
+    0: ['Cer senin', 'sun'], 1: ['Predominant senin', 'sun'], 2: ['Parțial noros', 'partly'], 3: ['Noros', 'cloud'],
+    45: ['Ceață', 'fog'], 48: ['Ceață cu chiciură', 'fog'],
+    51: ['Burniță slabă', 'rain'], 53: ['Burniță moderată', 'rain'], 55: ['Burniță puternică', 'rain'],
+    56: ['Burniță înghețată', 'rain'], 57: ['Burniță înghețată', 'rain'],
+    61: ['Ploaie slabă', 'rain'], 63: ['Ploaie moderată', 'rain'], 65: ['Ploaie puternică', 'rain'],
+    66: ['Ploaie înghețată', 'rain'], 67: ['Ploaie înghețată', 'rain'],
+    71: ['Ninsoare slabă', 'snow'], 73: ['Ninsoare moderată', 'snow'], 75: ['Ninsoare puternică', 'snow'], 77: ['Lapoviță', 'snow'],
+    80: ['Averse slabe', 'rain'], 81: ['Averse moderate', 'rain'], 82: ['Averse violente', 'rain'],
+    85: ['Averse de zăpadă', 'snow'], 86: ['Averse de zăpadă', 'snow'],
+    95: ['Furtună', 'storm'], 96: ['Furtună cu grindină', 'storm'], 99: ['Furtună cu grindină', 'storm'],
+  };
+  const SKY_BY_KIND = { storm: 'storm', snow: 'snow', rain: 'rain', fog: 'fog', cloud: 'cloud', partly: 'cloud' };
+  const ICONS = {
+    sun: '<circle cx="12" cy="12" r="4.5"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/>',
+    moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>',
+    partly: '<circle cx="8.5" cy="8.5" r="3.5"/><path d="M8.5 2v1.5M2 8.5h1.5M3.8 3.8l1 1M13.2 3.8l-1 1"/><path d="M9 19h9a4 4 0 0 0 .5-8 5.5 5.5 0 0 0-10.4 1.5A3.2 3.2 0 0 0 9 19z"/>',
+    cloud: '<path d="M7 18h10a4.5 4.5 0 0 0 .6-9A6 6 0 0 0 6.2 10.3 3.8 3.8 0 0 0 7 18z"/>',
+    rain: '<path d="M7 14h10a4 4 0 0 0 .6-8A6 6 0 0 0 6.2 6.3 3.8 3.8 0 0 0 7 14z"/><path d="M8 17l-1 3M12 17l-1 3M16 17l-1 3"/>',
+    snow: '<path d="M7 14h10a4 4 0 0 0 .6-8A6 6 0 0 0 6.2 6.3 3.8 3.8 0 0 0 7 14z"/><path d="M8 18h.01M12 20.5h.01M16 18h.01" stroke-width="3"/>',
+    storm: '<path d="M7 14h10a4 4 0 0 0 .6-8A6 6 0 0 0 6.2 6.3 3.8 3.8 0 0 0 7 14z"/><path d="M12.5 15l-2 4h3l-2 4"/>',
+    fog: '<path d="M4 9h16M3 13h18M5 17h14"/>',
+  };
+  const DIRS = ['N', 'NE', 'E', 'SE', 'S', 'SV', 'V', 'NV'];
+
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => [...document.querySelectorAll(sel)];
+  const setText = (sel, text) => { $(sel).textContent = text; };
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  const num = (v, d = 0) => (v == null || Number.isNaN(v) ? '-' : Number(v).toLocaleString('ro-RO', { maximumFractionDigits: d }));
+  const deg = (v) => (v == null ? '-' : `${num(v)}°`);
+  const mm = (v) => (v == null ? '-' : `${num(v, 1)} mm`);
+  const pct = (v) => (v == null ? '-' : `${num(v)}%`);
+  const hhmm = (t) => (t ? t.slice(11, 16) : '-');
+  const windDir = (d) => (d == null ? '-' : DIRS[Math.round(d / 45) % 8]);
+  const uvLabel = (v) => (v == null ? '' : v < 3 ? 'Scăzut' : v < 6 ? 'Moderat' : v < 8 ? 'Ridicat' : v < 11 ? 'Foarte ridicat' : 'Extrem');
+  const aqiLabel = (v) => (v == null ? '' : v <= 20 ? 'Foarte bun' : v <= 40 ? 'Bun' : v <= 60 ? 'Acceptabil' : v <= 80 ? 'Slab' : v <= 100 ? 'Rău' : 'Foarte rău');
+  const dayName = (iso, style) => new Date(`${iso}T12:00:00`).toLocaleDateString('ro-RO',
+    style === 'long' ? { weekday: 'long', day: 'numeric', month: 'long' } : { weekday: 'short', day: 'numeric' });
+  const dayShort = (iso, index) => (index === 0 ? 'Azi' : index === 1 ? 'Mâine' : cap(dayName(iso, 'short')));
+
+  const wmoInfo = (code) => WMO[code] || ['Necunoscut', 'cloud'];
+  const iconKind = (code, isDay) => {
+    const kind = wmoInfo(code)[1];
+    return kind === 'sun' && !isDay ? 'moon' : kind;
+  };
+  const icon = (kind, cls = '') => `<svg class="ico ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[kind]}</svg>`;
+
+  const state = { place: null, forecast: null, air: null, nowIdx: 0, selectedDay: 0, favorites: [], charts: {} };
+
+  async function fetchJson(url, options) {
+    const res = await fetch(url, options);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  }
+
+  function setStatus(message, isError = false) {
+    const el = $('#status');
+    el.hidden = !message;
+    el.textContent = message || '';
+    el.classList.toggle('error', isError);
+  }
+
+  const forecastUrl = ({ latitude, longitude }) =>
+    `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&timezone=auto&forecast_days=10&current=${CURRENT_VARS}&hourly=${HOURLY_VARS}&daily=${DAILY_VARS}`;
+  const airUrl = ({ latitude, longitude }) =>
+    `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${latitude}&longitude=${longitude}&timezone=auto&current=european_aqi,pm2_5`;
+
+  async function loadPlace(place) {
+    setStatus('Se încarcă prognoza...');
+    try {
+      const [forecast, air] = await Promise.all([
+        fetchJson(forecastUrl(place)),
+        fetchJson(airUrl(place)).catch(() => null),
+      ]);
+      if (!forecast?.current || !forecast?.hourly || !forecast?.daily) throw new Error('Răspuns invalid');
+      state.place = place;
+      state.forecast = forecast;
+      state.air = air?.current ?? null;
+      state.selectedDay = 0;
+      state.nowIdx = Math.max(0, forecast.hourly.time.indexOf(`${forecast.current.time.slice(0, 13)}:00`));
+      setStatus(null);
+      render();
+    } catch {
+      setStatus('Nu am putut încărca prognoza. Verifică conexiunea și încearcă din nou.', true);
+    }
+  }
+
+  function render() {
+    const { current } = state.forecast;
+    setSky(skyMode(current.weather_code, current.is_day === 1), current.precipitation);
+    renderHero();
+    renderMetrics();
+    renderHourly();
+    renderDaily();
+    renderDayChart();
+    renderRainChart();
+    renderWindChart();
+    renderRadar();
+  }
+
+  function renderHero() {
+    const { current, daily } = state.forecast;
+    const { place } = state;
+    const isDay = current.is_day === 1;
+    setText('#heroTime', `Ora locală ${hhmm(current.time)}`);
+    setText('#placeName', place.name);
+    setText('#placeMeta', [place.admin1, place.country].filter(Boolean).join(', '));
+    $('#heroIcon').innerHTML = icon(iconKind(current.weather_code, isDay), 'big');
+    setText('#currentTemp', deg(current.temperature_2m));
+    setText('#condition', wmoInfo(current.weather_code)[0]);
+    setText('#feelsLike', `Se simte ca ${deg(current.apparent_temperature)}`);
+    setText('#hiLo', `Max ${deg(daily.temperature_2m_max[0])} · Min ${deg(daily.temperature_2m_min[0])}`);
+    setText('#heroRain', `Ploaie acum: ${mm(current.precipitation)} · Total azi: ${mm(daily.precipitation_sum[0])} · Probabilitate maximă: ${pct(daily.precipitation_probability_max[0])}`);
+    renderFavButton();
+  }
+
+  function setMetric(key, value, sub) {
+    const el = $(`[data-metric="${key}"]`);
+    el.querySelector('.m-value').textContent = value;
+    el.querySelector('.m-sub').textContent = sub;
+  }
+
+  function renderMetrics() {
+    const { current, hourly, daily } = state.forecast;
+    const i = state.nowIdx;
+    const air = state.air;
+    const vis = hourly.visibility[i];
+    const uv = hourly.uv_index[i];
+    setMetric('humidity', pct(hourly.relative_humidity_2m[i]), 'Aerul din jur');
+    setMetric('dew', deg(hourly.dew_point_2m[i]), 'Temperatura la care apare roua');
+    setMetric('wind', `${num(current.wind_speed_10m)} km/h`, `Direcție ${windDir(current.wind_direction_10m)}`);
+    setMetric('gusts', `${num(current.wind_gusts_10m)} km/h`, 'Rafale maxime');
+    setMetric('pressure', `${num(current.pressure_msl)} hPa`, 'La nivelul mării');
+    setMetric('visibility', vis == null ? '-' : `${num(vis / 1000, 1)} km`, 'Distanța de vizibilitate');
+    setMetric('uv', num(uv, 1), uvLabel(uv));
+    setMetric('aqi', air ? num(air.european_aqi) : '-', air ? `${aqiLabel(air.european_aqi)} · PM2.5 ${num(air.pm2_5, 1)}` : 'Indisponibil');
+    setMetric('sun', `${hhmm(daily.sunrise[0])} / ${hhmm(daily.sunset[0])}`, 'Răsărit / Apus');
+  }
+
+  function renderHourly() {
+    const { hourly } = state.forecast;
+    const frag = document.createDocumentFragment();
+    for (let k = 0; k < 24; k++) {
+      const i = state.nowIdx + k;
+      if (i >= hourly.time.length) break;
+      const card = document.createElement('div');
+      card.className = `hour${k === 0 ? ' now' : ''}`;
+      card.innerHTML = `
+        <span class="h-time">${k === 0 ? 'Acum' : hhmm(hourly.time[i])}</span>
+        ${icon(iconKind(hourly.weather_code[i], hourly.is_day[i] === 1), 'sm')}
+        <strong>${deg(hourly.temperature_2m[i])}</strong>
+        <span class="h-prob">${pct(hourly.precipitation_probability[i])}</span>
+        <span class="h-mm">${mm(hourly.precipitation[i])}</span>`;
+      frag.append(card);
+    }
+    $('#hourly').replaceChildren(frag);
+  }
+
+  function renderDaily() {
+    const { daily } = state.forecast;
+    const rows = daily.time.map((date, d) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'day-row';
+      btn.dataset.day = d;
+      btn.setAttribute('aria-pressed', String(d === state.selectedDay));
+      btn.innerHTML = `
+        <span class="day-name">${dayShort(date, d)}</span>
+        ${icon(iconKind(daily.weather_code[d], true), 'sm')}
+        <span class="day-temps"><strong>${deg(daily.temperature_2m_max[d])}</strong><span class="muted">${deg(daily.temperature_2m_min[d])}</span></span>
+        <span class="day-rain"><span>${mm(daily.precipitation_sum[d])}</span><small>${pct(daily.precipitation_probability_max[d])}</small></span>`;
+      return btn;
+    });
+    $('#dailyList').replaceChildren(...rows);
+  }
+
+  function updateDaySelection() {
+    $$('.day-row').forEach((btn) => {
+      btn.setAttribute('aria-pressed', String(Number(btn.dataset.day) === state.selectedDay));
+    });
+  }
+
+  const chartOptions = (scales) => ({
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: { legend: { labels: { usePointStyle: true, boxWidth: 8 } } },
+    scales: {
+      x: { grid: { display: false }, ticks: { autoSkip: true, maxTicksLimit: 12, maxRotation: 0 } },
+      ...scales,
+    },
+  });
+
+  function drawChart(key, selector, config) {
+    state.charts[key]?.destroy();
+    state.charts[key] = new Chart($(selector), config);
+  }
+
+  function renderDayChart() {
+    const { daily, hourly } = state.forecast;
+    const sel = state.selectedDay;
+    const date = daily.time[sel];
+    const idx = hourly.time.map((t, i) => (t.startsWith(date) ? i : -1)).filter((i) => i >= 0);
+    setText('#dayTitle', cap(dayName(date, 'long')));
+    setText('#daySummary', `${wmoInfo(daily.weather_code[sel])[0]} · Max ${deg(daily.temperature_2m_max[sel])}, min ${deg(daily.temperature_2m_min[sel])} · Precipitații ${mm(daily.precipitation_sum[sel])}`);
+    drawChart('day', '#dayChart', {
+      type: 'bar',
+      data: {
+        labels: idx.map((i) => hhmm(hourly.time[i])),
+        datasets: [
+          { type: 'bar', label: 'Precipitații (mm)', data: idx.map((i) => hourly.precipitation[i]), yAxisID: 'yRain', backgroundColor: 'rgba(111, 196, 255, 0.75)', borderRadius: 4, order: 2 },
+          { type: 'line', label: 'Temperatură (°C)', data: idx.map((i) => hourly.temperature_2m[i]), yAxisID: 'yTemp', borderColor: '#ffd27a', backgroundColor: '#ffd27a', pointRadius: 2, tension: 0.35, borderWidth: 2.5, order: 1 },
+        ],
+      },
+      options: chartOptions({
+        yTemp: { position: 'left', title: { display: true, text: '°C' } },
+        yRain: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, title: { display: true, text: 'mm' } },
+      }),
+    });
+  }
+
+  function renderRainChart() {
+    const { daily } = state.forecast;
+    const values = daily.precipitation_sum.map((v) => v ?? 0);
+    let running = 0;
+    const cumulative = values.map((v) => (running += v));
+    const wettest = values.indexOf(Math.max(...values));
+    setText('#rainTotal', mm(running));
+    setText('#rainNote', values[wettest] > 0
+      ? `Cea mai ploioasă zi: ${cap(dayName(daily.time[wettest], 'short'))}, ${mm(values[wettest])}`
+      : 'Nu sunt precipitații prevăzute în următoarele 10 zile');
+    drawChart('rain', '#rainChart', {
+      type: 'bar',
+      data: {
+        labels: daily.time.map((d) => dayName(d, 'short')),
+        datasets: [
+          { type: 'bar', label: 'Precipitații zilnice (mm)', data: values, yAxisID: 'yDay', backgroundColor: 'rgba(111, 196, 255, 0.8)', borderRadius: 6, order: 2 },
+          { type: 'line', label: 'Total acumulat (mm)', data: cumulative, yAxisID: 'yTotal', borderColor: '#9be7b5', backgroundColor: '#9be7b5', tension: 0.3, borderWidth: 2.5, pointRadius: 3, order: 1 },
+        ],
+      },
+      options: chartOptions({
+        yDay: { position: 'left', beginAtZero: true, title: { display: true, text: 'mm pe zi' } },
+        yTotal: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, title: { display: true, text: 'mm acumulați' } },
+      }),
+    });
+  }
+
+  function renderWindChart() {
+    const { hourly } = state.forecast;
+    const count = Math.min(24, hourly.time.length - state.nowIdx);
+    const idx = Array.from({ length: count }, (_, k) => state.nowIdx + k);
+    const speeds = idx.map((i) => hourly.wind_speed_10m[i]);
+    const max = Math.max(...speeds);
+    const maxIdx = idx[speeds.indexOf(max)];
+    setText('#windMax', `${num(max)} km/h`);
+    setText('#windMaxNote', `Cel mai puternic vânt la ora ${hhmm(hourly.time[maxIdx])}`);
+    drawChart('wind', '#windChart', {
+      type: 'line',
+      data: {
+        labels: idx.map((i) => hhmm(hourly.time[i])),
+        datasets: [
+          { label: 'Viteza vântului (km/h)', data: speeds, borderColor: '#7fd3ff', backgroundColor: 'rgba(127, 211, 255, 0.2)', fill: true, tension: 0.35, pointRadius: 0, borderWidth: 2.5 },
+          { label: 'Rafale (km/h)', data: idx.map((i) => hourly.wind_gusts_10m[i]), borderColor: '#ffd27a', borderDash: [6, 5], tension: 0.35, pointRadius: 0, borderWidth: 2 },
+        ],
+      },
+      options: chartOptions({ y: { beginAtZero: true, title: { display: true, text: 'km/h' } } }),
+    });
+  }
+
+  function renderRadar() {
+    const { latitude, longitude } = state.place;
+    const radar = $('#radar');
+    const url = `https://embed.windy.com/embed2.html?lat=${latitude}&lon=${longitude}&detailLat=${latitude}&detailLon=${longitude}&width=650&height=450&zoom=7&level=surface&overlay=radar&product=radar&menu=&message=true&marker=true&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=km%2Fh&metricTemp=%C2%B0C&radarRange=-1`;
+    if (radar.dataset.src !== url) {
+      radar.dataset.src = url;
+      radar.src = url;
+    }
+  }
+
+  const sameSpot = (a, b) => Math.abs(a.latitude - b.latitude) < 0.001 && Math.abs(a.longitude - b.longitude) < 0.001;
+  const findFavorite = (place) => state.favorites.find((f) => sameSpot(f, place));
+
+  function renderFavButton() {
+    const saved = Boolean(state.place && findFavorite(state.place));
+    const btn = $('#favBtn');
+    btn.classList.toggle('active', saved);
+    btn.textContent = saved ? 'Salvată în favorite' : 'Salvează locația';
+    btn.setAttribute('aria-pressed', String(saved));
+  }
+
+  function renderFavorites() {
+    $('#favEmpty').hidden = state.favorites.length > 0;
+    $('#favList').replaceChildren(...state.favorites.map((f) => {
+      const li = document.createElement('li');
+      li.className = 'chip';
+      const open = document.createElement('button');
+      open.type = 'button';
+      open.className = 'chip-open';
+      open.dataset.id = f.id;
+      open.textContent = f.name;
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'chip-del';
+      del.dataset.id = f.id;
+      del.setAttribute('aria-label', `Șterge ${f.name} din favorite`);
+      del.textContent = '×';
+      li.append(open, del);
+      return li;
+    }));
+  }
+
+  async function loadFavorites() {
+    try {
+      const rows = await fetchJson(`${FAV_URL}?select=*&order=created_at.asc`, { headers: dbHeaders });
+      if (!Array.isArray(rows)) throw new Error('Răspuns invalid');
+      state.favorites = rows;
+      renderFavorites();
+      renderFavButton();
+    } catch {
+      setStatus('Nu am putut încărca locațiile salvate.', true);
+    }
+  }
+
+  async function toggleFavorite() {
+    const { place } = state;
+    const saved = findFavorite(place);
+    try {
+      if (saved) {
+        const res = await fetch(`${FAV_URL}?id=eq.${saved.id}`, { method: 'DELETE', headers: dbHeaders });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        state.favorites = state.favorites.filter((f) => f.id !== saved.id);
+      } else {
+        const rows = await fetchJson(FAV_URL, {
+          method: 'POST',
+          headers: { ...dbHeaders, Prefer: 'return=representation' },
+          body: JSON.stringify({ name: place.name, country: place.country ?? null, latitude: place.latitude, longitude: place.longitude }),
+        });
+        state.favorites.push(rows[0]);
+      }
+      renderFavorites();
+      renderFavButton();
+    } catch {
+      setStatus('Nu am putut actualiza locațiile salvate. Încearcă din nou.', true);
+    }
+  }
+
+  async function removeFavorite(id) {
+    try {
+      const res = await fetch(`${FAV_URL}?id=eq.${id}`, { method: 'DELETE', headers: dbHeaders });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      state.favorites = state.favorites.filter((f) => f.id !== id);
+      renderFavorites();
+      renderFavButton();
+    } catch {
+      setStatus('Nu am putut șterge locația. Încearcă din nou.', true);
+    }
+  }
+
+  const searchInput = $('#search');
+  const suggestionList = $('#suggestions');
+  let suggestionItems = [];
+  let activeIndex = -1;
+  let searchTimer;
+  let searchController;
+
+  function closeSuggestions() {
+    suggestionList.hidden = true;
+    searchInput.setAttribute('aria-expanded', 'false');
+    searchInput.removeAttribute('aria-activedescendant');
+    activeIndex = -1;
+  }
+
+  function renderSuggestions(message) {
+    activeIndex = -1;
+    const nodes = [];
+    if (message) {
+      const li = document.createElement('li');
+      li.className = 'sug-empty';
+      li.textContent = message;
+      nodes.push(li);
+    }
+    suggestionItems.forEach((item, i) => {
+      const li = document.createElement('li');
+      li.id = `sug-${i}`;
+      li.setAttribute('role', 'option');
+      li.setAttribute('aria-selected', 'false');
+      li.dataset.index = i;
+      const name = document.createElement('span');
+      name.textContent = item.name;
+      const sub = document.createElement('span');
+      sub.className = 'sug-sub';
+      sub.textContent = [item.admin1, item.country].filter(Boolean).join(', ');
+      li.append(name, sub);
+      nodes.push(li);
+    });
+    suggestionList.replaceChildren(...nodes);
+    suggestionList.hidden = false;
+    searchInput.setAttribute('aria-expanded', 'true');
+  }
+
+  async function searchPlaces(query) {
+    searchController?.abort();
+    searchController = new AbortController();
+    try {
+      const data = await fetchJson(
+        `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=6&language=ro&format=json`,
+        { signal: searchController.signal },
+      );
+      suggestionItems = data.results ?? [];
+      renderSuggestions(suggestionItems.length ? null : 'Nicio locație găsită');
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      suggestionItems = [];
+      renderSuggestions('Căutarea nu este disponibilă acum');
+    }
+  }
+
+  function highlightSuggestion(items) {
+    items.forEach((el, i) => {
+      const on = i === activeIndex;
+      el.classList.toggle('active', on);
+      el.setAttribute('aria-selected', String(on));
+    });
+    const current = items[activeIndex];
+    if (current) {
+      searchInput.setAttribute('aria-activedescendant', current.id);
+      current.scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  function choosePlace(item) {
+    searchInput.value = item.name;
+    closeSuggestions();
+    loadPlace({ name: item.name, admin1: item.admin1, country: item.country, latitude: item.latitude, longitude: item.longitude });
+  }
+
+  searchInput.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    const query = searchInput.value.trim();
+    if (query.length < 2) {
+      closeSuggestions();
+      return;
+    }
+    searchTimer = setTimeout(() => searchPlaces(query), 250);
+  });
+
+  searchInput.addEventListener('keydown', (e) => {
+    const items = $$('#suggestions [role="option"]');
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (!items.length) return;
+      e.preventDefault();
+      const step = e.key === 'ArrowDown' ? 1 : -1;
+      activeIndex = (activeIndex + step + items.length) % items.length;
+      highlightSuggestion(items);
+    } else if (e.key === 'Enter') {
+      const item = suggestionItems[activeIndex] ?? suggestionItems[0];
+      if (item) {
+        e.preventDefault();
+        choosePlace(item);
+      }
+    } else if (e.key === 'Escape') {
+      closeSuggestions();
+    }
+  });
+
+  suggestionList.addEventListener('click', (e) => {
+    const li = e.target.closest('[role="option"]');
+    if (li) choosePlace(suggestionItems[Number(li.dataset.index)]);
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!$('.search-box').contains(e.target)) closeSuggestions();
+  });
+
+  async function reverseLocation(latitude, longitude) {
+    try {
+      const d = await fetchJson(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=ro`);
+      return { name: d.city || d.locality || 'Locația mea', country: d.countryName, latitude, longitude };
+    } catch {
+      return { name: 'Locația mea', latitude, longitude };
+    }
+  }
+
+  $('#gpsBtn').addEventListener('click', () => {
+    if (!navigator.geolocation) {
+      setStatus('Locația GPS nu este disponibilă în acest browser.', true);
+      return;
+    }
+    setStatus('Se caută locația ta...');
+    navigator.geolocation.getCurrentPosition(
+      async ({ coords }) => {
+        loadPlace(await reverseLocation(coords.latitude, coords.longitude));
+      },
+      (err) => setStatus(
+        err.code === 1
+          ? 'Accesul la locație a fost refuzat. Permite accesul din setările browserului.'
+          : 'Locația nu a putut fi determinată. Încearcă din nou.',
+        true,
+      ),
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 },
+    );
+  });
+
+  $('#dailyList').addEventListener('click', (e) => {
+    const btn = e.target.closest('.day-row');
+    if (!btn) return;
+    state.selectedDay = Number(btn.dataset.day);
+    updateDaySelection();
+    renderDayChart();
+  });
+
+  $('#favBtn').addEventListener('click', toggleFavorite);
+
+  $('#favList').addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    const fav = state.favorites.find((f) => f.id === btn.dataset.id);
+    if (!fav) return;
+    if (btn.classList.contains('chip-open')) loadPlace(fav);
+    else removeFavorite(fav.id);
+  });
+
+  Chart.defaults.color = '#e8f1fb';
+  Chart.defaults.borderColor = 'rgba(255, 255, 255, 0.14)';
+  Chart.defaults.font.family = "'Plus Jakarta Sans', system-ui, sans-serif";
+
+  /* Animated sky background */
+  const canvas = $('#sky');
+  const ctx = canvas.getContext('2d');
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const SKY_COLORS = {
+    clearDay: [[24, 84, 150], [46, 122, 182]],
+    clearNight: [[11, 27, 51], [31, 59, 99]],
+    cloud: [[52, 68, 88], [84, 102, 124]],
+    rain: [[28, 42, 58], [61, 86, 112]],
+    storm: [[19, 26, 38], [47, 61, 82]],
+    snow: [[60, 78, 100], [98, 116, 140]],
+    fog: [[60, 70, 80], [98, 108, 118]],
+  };
+  const CLOUDY = new Set(['cloud', 'rain', 'storm', 'snow']);
+  const RAINY = new Set(['rain', 'storm']);
+  const CLOUD_BLOBS = [[0, 0, 70], [60, -18, 55], [-55, -8, 50], [24, 18, 62]];
+  const sky = {
+    mode: 'clearDay', intensity: 0, flash: 0, bolt: null, t: 0, lastFrame: performance.now(),
+    top: [...SKY_COLORS.clearDay[0]], bottom: [...SKY_COLORS.clearDay[1]],
+    w: 0, h: 0, drops: [], flakes: [], clouds: [], stars: [],
+  };
+
+  const rgb = (c) => `rgb(${c.map(Math.round).join(',')})`;
+  const rand = (a, b) => a + Math.random() * (b - a);
+
+  function skyMode(code, isDay) {
+    return SKY_BY_KIND[wmoInfo(code)[1]] || (isDay ? 'clearDay' : 'clearNight');
+  }
+
+  function setSky(mode, precip) {
+    sky.mode = mode;
+    sky.intensity = mode === 'storm' ? 1 : Math.min(1, Math.max(0.35, (precip || 0) / 2));
+  }
+
+  function resizeSky() {
+    const dpr = 1;
+    sky.w = window.innerWidth;
+    sky.h = window.innerHeight;
+    canvas.width = sky.w * dpr;
+    canvas.height = sky.h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    sky.stars = Array.from({ length: Math.round((sky.w * sky.h) / 7000) }, () => ({
+      x: rand(0, sky.w), y: rand(0, sky.h * 0.75), r: rand(0.3, 1.7), p: rand(0, Math.PI * 2),
+    }));
+    sky.clouds = Array.from({ length: 6 }, () => ({ x: rand(0, sky.w), y: sky.h * rand(0.04, 0.44), s: rand(0.7, 1.6), v: rand(0.15, 0.5) }));
+  }
+
+  function fillParticles(list, count, make) {
+    while (list.length < count) list.push(make());
+    list.length = count;
+  }
+
+  function drawSun() {
+    const x = sky.w * 0.82;
+    const y = sky.h * 0.16;
+    const r = Math.max(sky.w, sky.h) * 0.32 * (1 + 0.04 * Math.sin(sky.t * 2));
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, 'rgba(255, 240, 190, 0.85)');
+    g.addColorStop(0.25, 'rgba(255, 226, 150, 0.35)');
+    g.addColorStop(1, 'rgba(255, 226, 150, 0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, sky.w, sky.h);
+  }
+
+  function drawStars() {
+    for (const s of sky.stars) {
+      s.p += 0.02;
+      ctx.fillStyle = `rgba(255, 255, 255, ${0.35 + 0.5 * Math.abs(Math.sin(s.p))})`;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawCloud(c, alpha) {
+    for (const [dx, dy, r] of CLOUD_BLOBS) {
+      const x = c.x + dx * c.s;
+      const y = c.y + dy * c.s;
+      const rr = r * c.s;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, rr);
+      g.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
+      g.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, rr, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawClouds(dt) {
+    const alpha = sky.mode === 'cloud' ? 0.2 : 0.3;
+    for (const c of sky.clouds) {
+      c.x += c.v * dt * (1 + sky.intensity * 0.5);
+      if (c.x > sky.w + 250 * c.s) {
+        c.x = -250 * c.s;
+        c.y = sky.h * rand(0.04, 0.44);
+      }
+      drawCloud(c, alpha);
+    }
+  }
+
+  const newDrop = () => ({ x: rand(-50, sky.w + 50), y: rand(-sky.h, sky.h), len: rand(14, 30), v: rand(9, 15) });
+  function drawRain(dt) {
+    fillParticles(sky.drops, Math.round((sky.w / 7) * (0.4 + sky.intensity)), newDrop);
+    ctx.strokeStyle = 'rgba(210, 230, 255, 0.55)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    for (const d of sky.drops) {
+      d.y += d.v * dt * (1 + sky.intensity * 0.4);
+      d.x -= d.v * dt * 0.3;
+      if (d.y > sky.h + 20) {
+        d.y = -d.len;
+        d.x = rand(-50, sky.w + 50);
+      }
+      ctx.moveTo(d.x, d.y);
+      ctx.lineTo(d.x + d.len * 0.3, d.y - d.len);
+    }
+    ctx.stroke();
+  }
+
+  const newFlake = () => ({ x: rand(0, sky.w), y: rand(-sky.h, sky.h), r: rand(1, 3.5), v: rand(0.8, 2), p: rand(0, 6.28) });
+  function drawSnow(dt) {
+    fillParticles(sky.flakes, Math.round((sky.w / 12) * (0.5 + sky.intensity)), newFlake);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+    ctx.beginPath();
+    for (const f of sky.flakes) {
+      f.p += 0.02 * dt;
+      f.y += f.v * dt;
+      f.x += Math.sin(f.p) * 0.6 * dt;
+      if (f.y > sky.h + 5) {
+        f.y = -5;
+        f.x = rand(0, sky.w);
+      }
+      ctx.moveTo(f.x + f.r, f.y);
+      ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
+    }
+    ctx.fill();
+  }
+
+  function makeBolt() {
+    let x = rand(0, sky.w);
+    let y = 0;
+    const pts = [[x, y]];
+    while (y < sky.h * 0.7) {
+      y += rand(30, 70);
+      x += rand(-30, 30);
+      pts.push([x, y]);
+    }
+    return pts;
+  }
+
+  function drawLightning(dt) {
+    if (!sky.flash && Math.random() < 0.006 * dt) {
+      sky.flash = 1;
+      sky.bolt = makeBolt();
+    }
+    if (sky.flash <= 0.02) {
+      sky.flash = 0;
+      return;
+    }
+    ctx.fillStyle = `rgba(220, 235, 255, ${sky.flash * 0.3})`;
+    ctx.fillRect(0, 0, sky.w, sky.h);
+    if (sky.flash > 0.6 && sky.bolt) {
+      ctx.strokeStyle = `rgba(255, 255, 255, ${sky.flash})`;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      sky.bolt.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+      ctx.stroke();
+    }
+    sky.flash *= Math.pow(0.9, dt);
+  }
+
+  function drawFog() {
+    for (let i = 0; i < 4; i++) {
+      const y = sky.h * (0.15 + i * 0.22) + Math.sin(sky.t * 0.8 + i) * 18;
+      const x = sky.w / 2 + Math.sin(sky.t * 0.5 + i * 1.7) * sky.w * 0.15;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+      ctx.beginPath();
+      ctx.ellipse(x, y, sky.w * 0.7, 90, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawVignette() {
+    const cx = sky.w / 2;
+    const cy = sky.h / 2;
+    const g = ctx.createRadialGradient(cx, cy, Math.min(sky.w, sky.h) * 0.4, cx, cy, Math.max(sky.w, sky.h) * 0.75);
+    g.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    g.addColorStop(1, 'rgba(0, 0, 0, 0.28)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, sky.w, sky.h);
+  }
+
+  function drawSky(now) {
+    const dt = Math.min(2, Math.max(0.1, (now - sky.lastFrame) / 16.67));
+    sky.lastFrame = now;
+    sky.t += 0.01 * dt;
+
+    const target = SKY_COLORS[sky.mode];
+    for (let i = 0; i < 3; i++) {
+      sky.top[i] += (target[0][i] - sky.top[i]) * 0.03 * dt;
+      sky.bottom[i] += (target[1][i] - sky.bottom[i]) * 0.03 * dt;
+    }
+    const g = ctx.createLinearGradient(0, 0, 0, sky.h);
+    g.addColorStop(0, rgb(sky.top));
+    g.addColorStop(1, rgb(sky.bottom));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, sky.w, sky.h);
+
+    if (sky.mode === 'clearDay') drawSun();
+    if (sky.mode === 'clearNight') drawStars();
+    if (CLOUDY.has(sky.mode)) drawClouds(dt);
+    if (RAINY.has(sky.mode)) drawRain(dt);
+    if (sky.mode === 'snow') drawSnow(dt);
+    if (sky.mode === 'storm') drawLightning(dt);
+    if (sky.mode === 'fog') drawFog();
+    drawVignette();
+  }
+
+  function frame(now) {
+    drawSky(now);
+    if (!reduceMotion) requestAnimationFrame(frame);
+  }
+
+  resizeSky();
+  window.addEventListener('resize', resizeSky);
+  requestAnimationFrame(frame);
+
+  loadPlace(DEFAULT_PLACE);
+  loadFavorites();
+</script>
+</body>
+</html>
